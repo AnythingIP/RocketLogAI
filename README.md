@@ -39,7 +39,8 @@ RocketLogAI is the opposite: everything runs on your machine, against your local
 ### 1. Install
 
 ```bash
-cd logsentinel
+git clone https://github.com/AnythingIP/RocketLogAI.git
+cd RocketLogAI
 pip install -e ".[web]"     # recommended (includes FastAPI dashboard + extras)
 # or for the absolute minimum core
 pip install -e .
