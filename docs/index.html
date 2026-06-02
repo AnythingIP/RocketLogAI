@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RocketLogAI • by AnythingIP</title>
+    <meta name="description" content="AI-powered local syslog server and security analyzer. Uses your own offline LLM (LM Studio, Ollama, etc.) for real-time threat detection. Zero cloud. Full privacy. Deep Home Assistant integration.">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        
+        :root {
+            --bg: #0a0a0c;
+        }
+        
+        body { 
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; 
+            background: #0a0a0c;
+        }
+        
+        .font-display {
+            font-family: 'Space Grotesk', 'Inter', sans-serif;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        .glass {
+            background: rgba(255,255,255,0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .section-card {
+            background: #111113;
+            border: 1px solid #27272a;
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+                       box-shadow 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+        
+        .section-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+        }
+
+        .metric-value {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .nav-active {
+            color: #a1a1aa;
+            background: rgba(255,255,255,0.06);
+            border-radius: 6px;
+            padding: 2px 10px;
+        }
+
+        .glow-emerald {
+            box-shadow: 0 0 15px -3px rgb(52 211 153 / 0.15);
+        }
+
+        .code-block {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background: #0a0a0c;
+            border: 1px solid #27272a;
+        }
+
+        .feature-icon {
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            background: #18181b;
+            border: 1px solid #27272a;
+        }
+
+        .stat {
+            font-size: 2.25rem;
+            line-height: 2.25rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        .subtle-grid {
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+    </style>
+</head>
+<body class="bg-[#0a0a0c] text-zinc-200">
+    <!-- Nav -->
+    <nav class="sticky top-0 z-50 border-b border-zinc-800 bg-[#0a0a0c]/95 backdrop-blur supports-[backdrop-filter]:bg-[#0a0a0c]/80">
+        <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-black font-bold text-2xl shadow-inner flex-shrink-0">R</div>
+                <div>
+                    <div class="font-display text-xl tracking-tighter font-semibold">RocketLogAI</div>
+                    <div class="text-[10px] text-emerald-400 -mt-1">by AnythingIP</div>
+                </div>
+            </div>
+            
+            <div class="hidden md:flex items-center gap-8 text-sm">
+                <a href="#features" class="hover:text-white text-zinc-400 transition">Features</a>
+                <a href="#how" class="hover:text-white text-zinc-400 transition">How it works</a>
+                <a href="#screenshots" class="hover:text-white text-zinc-400 transition">Screenshots</a>
+                <a href="#start" class="hover:text-white text-zinc-400 transition">Get started</a>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" id="nav-github"
+                   class="hidden sm:flex items-center gap-2 px-4 py-1.5 text-sm rounded-2xl border border-zinc-700 hover:bg-zinc-900 transition">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    <span>GitHub</span>
+                </a>
+                <a href="#start" 
+                   class="px-5 py-1.5 text-sm font-medium rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black transition active:scale-[0.985]">
+                    Get RocketLogAI
+                </a>
+                <!-- mobile menu -->
+                <button onclick="toggleMobileNav()" class="md:hidden p-2 text-zinc-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Mobile nav drawer -->
+    <div id="mobile-nav" class="hidden md:hidden fixed inset-0 z-[100] bg-black/70" onclick="toggleMobileNav()">
+        <div class="absolute right-0 top-0 h-full w-64 bg-[#111113] border-l border-zinc-800 p-6" onclick="event.stopImmediatePropagation()">
+            <div class="flex flex-col gap-4 text-sm pt-8">
+                <a href="#features" onclick="toggleMobileNav()" class="py-2">Features</a>
+                <a href="#how" onclick="toggleMobileNav()" class="py-2">How it works</a>
+                <a href="#screenshots" onclick="toggleMobileNav()" class="py-2">Screenshots</a>
+                <a href="#start" onclick="toggleMobileNav()" class="py-2">Get started</a>
+                <div class="pt-4 border-t border-zinc-800">
+                    <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="block py-2 text-emerald-400">View on GitHub →</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Open Source Banner -->
+    <div class="border-b border-zinc-800 bg-[#0f0f11]">
+        <div class="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2 text-emerald-400">
+                <span class="inline-block w-2 h-2 bg-emerald-400 rounded-full"></span>
+                <span class="font-medium">Now open source</span>
+                <span class="text-zinc-500">— MIT licensed on GitHub</span>
+            </div>
+            <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="font-medium flex items-center gap-1 hover:text-white transition text-emerald-400">
+                Star <span class="hidden sm:inline">AnythingIP/RocketLogAI</span> on GitHub →
+            </a>
+        </div>
+    </div>
+
+    <!-- Hero -->
+    <div class="max-w-5xl mx-auto px-6 pt-16 pb-12 text-center">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs tracking-[1px] mb-6">
+            <div class="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
+            <span class="text-emerald-400">FULLY LOCAL • ZERO CLOUD</span>
+        </div>
+        
+        <h1 class="font-display text-6xl sm:text-7xl tracking-tighter font-semibold leading-[0.95] mb-6">
+            Your logs.<br>
+            Your LLM.<br>
+            <span class="bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Real security.</span>
+        </h1>
+        
+        <p class="max-w-2xl mx-auto text-xl text-zinc-400 mb-8">
+            RocketLogAI is an AI-powered local syslog server and security analyzer. 
+            It watches everything your devices send, uses <span class="text-white">your own offline LLM</span> for deep analysis, 
+            and keeps every byte on your hardware.
+        </p>
+        
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="#start" 
+               class="group px-8 py-3.5 rounded-3xl bg-white text-black font-semibold flex items-center justify-center gap-2 hover:bg-zinc-100 active:scale-[0.985] transition text-base">
+                Start in 60 seconds
+                <span class="group-hover:translate-x-0.5 transition">→</span>
+            </a>
+            <a href="#screenshots" 
+               class="px-8 py-3.5 rounded-3xl border border-zinc-700 hover:bg-zinc-900 flex items-center justify-center gap-2 transition text-base">
+                See it in action
+            </a>
+        </div>
+        
+        <div class="mt-6 text-xs text-zinc-500 flex items-center justify-center gap-4">
+            <div>Docker • Python • One binary feel</div>
+            <div>•</div>
+            <div>v1.3 “Daily Briefing” • MIT licensed • <a href="https://github.com/AnythingIP/RocketLogAI" class="underline hover:text-white">AnythingIP/RocketLogAI</a></div>
+        </div>
+    </div>
+
+    <!-- Trust / logos row -->
+    <div class="border-y border-zinc-800 py-6">
+        <div class="max-w-5xl mx-auto px-6">
+            <div class="flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-zinc-500">
+                <div class="flex items-center gap-2"><span class="text-emerald-400">🏠</span> Home Assistant power users</div>
+                <div class="flex items-center gap-2"><span class="text-emerald-400">🔒</span> Air-gapped &amp; offline environments</div>
+                <div class="flex items-center gap-2"><span class="text-emerald-400">🖥️</span> Homelab &amp; small IT teams</div>
+                <div class="flex items-center gap-2"><span class="text-emerald-400">🏭</span> Industrial / legacy systems (IBM i)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key stats / value props -->
+    <div class="max-w-5xl mx-auto px-6 pt-12 pb-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="section-card rounded-3xl p-6">
+            <div class="text-emerald-400 text-xs tracking-widest">PRIVACY</div>
+            <div class="stat mt-3">100%</div>
+            <div class="text-zinc-400 mt-1">local. Your data never leaves the machine. No telemetry, no phoning home.</div>
+        </div>
+        <div class="section-card rounded-3xl p-6">
+            <div class="text-emerald-400 text-xs tracking-widest">LLM</div>
+            <div class="stat mt-3">Your model</div>
+            <div class="text-zinc-400 mt-1">LM Studio, Ollama, vLLM, or Azure/M365 Copilot. Structured JSON analysis.</div>
+        </div>
+        <div class="section-card rounded-3xl p-6">
+            <div class="text-emerald-400 text-xs tracking-widest">INTEGRATIONS</div>
+            <div class="stat mt-3">Deep HA</div>
+            <div class="text-zinc-400 mt-1">Device registry, rich alerts, sensors, events. Forward logs from all addons.</div>
+        </div>
+        <div class="section-card rounded-3xl p-6">
+            <div class="text-emerald-400 text-xs tracking-widest">SAFETY</div>
+            <div class="stat mt-3">Guarded</div>
+            <div class="text-zinc-400 mt-1">Remediation is disabled by default. Multiple layers: dry-run, confirmation, allow-lists.</div>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <div id="features" class="max-w-6xl mx-auto px-6 pt-8 pb-16">
+        <div class="flex items-end justify-between mb-8">
+            <div>
+                <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-1">CAPABILITIES</div>
+                <h2 class="font-display text-4xl tracking-tighter">Everything a local SIEM should be.</h2>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Feature cards -->
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🧠</div>
+                <div class="font-semibold mb-1">Local LLM Analysis</div>
+                <div class="text-sm text-zinc-400">Rule engine first, then high-value logs go to your model for context-aware threat detection, summaries, and suggested fixes. Excellent with Qwen2.5, Llama 3.1/3.3, Command-R.</div>
+            </div>
+            
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🏠</div>
+                <div class="font-semibold mb-1">Home Assistant Superpowers</div>
+                <div class="text-sm text-zinc-400">Pulls your actual device registry. Matches IPs/MACs to lights, sensors, switches. Fires notifications, events, updates sensors. Forward all addon + core + supervisor logs via the syslog addon.</div>
+            </div>
+            
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">💓</div>
+                <div class="font-semibold mb-1">Active Heartbeat Monitoring</div>
+                <div class="text-sm text-zinc-400">Not just "is the port open?". Verifies the *right* website version, SSH config up to date, services healthy. Failed or stale heartbeats become first-class threats that go through the full analysis pipeline.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">📅</div>
+                <div class="font-semibold mb-1">Daily Briefing (Operator Companion)</div>
+                <div class="text-sm text-zinc-400">Entertaining, grounded recap of the day/shift. Chat naturally: "why the spike at 3am?", "draft a fix script", "promote this to a standing monitor". Full history persisted.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🤖</div>
+                <div class="font-semibold mb-1">Built-in AI Assistant</div>
+                <div class="text-sm text-zinc-400">Ask about config, iBMi automation, monitors, anything. Self-documenting. Submit feature suggestions through the UI — admins review them in the same place.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🗺️</div>
+                <div class="font-semibold mb-1">Offline + Multi-Source Geo</div>
+                <div class="text-sm text-zinc-400">Free MaxMind GeoLite2 (city level) + optional paid providers merged with priority. Every threat gets location without leaking IPs to third parties.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🛠️</div>
+                <div class="font-semibold mb-1">Guarded Remediation &amp; Monitors</div>
+                <div class="text-sm text-zinc-400">Huge library of prebuilt remediation scripts (Linux, Windows, Cisco, Ubiquiti, pfSense, IBM i, cert renewal, etc.). English → safe script generator. All actions require explicit enable + confirmation.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🔌</div>
+                <div class="font-semibold mb-1">Broad Log Sources</div>
+                <div class="text-sm text-zinc-400">Syslog UDP/TCP (real 514 or 5140), network gear, Linux rsyslog, Windows (NXLog etc), HA addons, Docker logs, custom apps. RFC3164 + 5424 + best-effort.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6">
+                <div class="feature-icon mb-4 text-emerald-400">🛡️</div>
+                <div class="font-semibold mb-1">Fast Deterministic Rules + MAC + Blacklists</div>
+                <div class="text-sm text-zinc-400">Built-in high-value patterns for brute force, sudo abuse, crypto miners, kernel panics, etc. + custom patterns. MAC vendor lookup (IEEE + Wireshark manuf) + learned device behavior profiles.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- How it works -->
+    <div id="how" class="max-w-5xl mx-auto px-6 pb-16">
+        <div class="section-card rounded-3xl p-8 md:p-10">
+            <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-3">PIPELINE</div>
+            <h3 class="font-display text-3xl tracking-tighter mb-8">Simple. Powerful. Transparent.</h3>
+            
+            <div class="grid md:grid-cols-5 gap-4 text-sm">
+                <div class="flex flex-col">
+                    <div class="font-mono text-[10px] text-emerald-400 mb-1">01</div>
+                    <div class="font-semibold mb-1">Ingest</div>
+                    <div class="text-zinc-400">Syslog UDP/TCP listeners. Parse RFC3164/5424. Store in SQLite with retention.</div>
+                </div>
+                <div class="flex flex-col">
+                    <div class="font-mono text-[10px] text-emerald-400 mb-1">02</div>
+                    <div class="font-semibold mb-1">Rule Engine</div>
+                    <div class="text-zinc-400">Fast deterministic patterns + severity scoring. Immediate threat records for matches.</div>
+                </div>
+                <div class="flex flex-col">
+                    <div class="font-mono text-[10px] text-emerald-400 mb-1">03</div>
+                    <div class="font-semibold mb-1">LLM Analysis</div>
+                    <div class="text-zinc-400">Periodic batches of interesting logs sent to *your* local model. Structured JSON: summary, severity, recommended action, IOCs.</div>
+                </div>
+                <div class="flex flex-col">
+                    <div class="font-mono text-[10px] text-emerald-400 mb-1">04</div>
+                    <div class="font-semibold mb-1">Enrich &amp; Alert</div>
+                    <div class="text-zinc-400">Geo (offline), device intel (HA + MAC), heartbeats, blacklists. Webhooks + rich HA notifications.</div>
+                </div>
+                <div class="flex flex-col">
+                    <div class="font-mono text-[10px] text-emerald-400 mb-1">05</div>
+                    <div class="font-semibold mb-1">Act (optional)</div>
+                    <div class="text-zinc-400">Human-in-the-loop confirmation before any remediation. Full audit trail. Promote good fixes to monitors.</div>
+                </div>
+            </div>
+            
+            <div class="mt-8 pt-6 border-t border-zinc-800 text-xs text-zinc-500">
+                Everything stays on your box. The only "AI" calls are to the LLM endpoint *you* configured (localhost:1234 by default).
+            </div>
+        </div>
+    </div>
+
+    <!-- Fun interactive mini demo -->
+    <div class="max-w-5xl mx-auto px-6 pb-16">
+        <div class="section-card rounded-3xl p-8">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <div class="uppercase tracking-[1px] text-xs text-emerald-400">PLAYGROUND</div>
+                    <div class="font-display text-2xl tracking-tighter">Try the analysis engine</div>
+                </div>
+                <div class="text-xs px-3 py-1 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-400">client-side simulation</div>
+            </div>
+            <p class="text-sm text-zinc-400 mb-4">Paste a realistic syslog line (or click an example). This runs the same style of rule engine + structured output that the real local LLM produces in RocketLogAI. A taste of what your instance will show on /threats and in the Daily Briefing.</p>
+            
+            <div class="flex flex-wrap gap-2 mb-3">
+                <button onclick="loadExample(0)" class="text-xs px-3 py-1 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">SSH brute force</button>
+                <button onclick="loadExample(1)" class="text-xs px-3 py-1 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">Sudo abuse</button>
+                <button onclick="loadExample(2)" class="text-xs px-3 py-1 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">HA addon warning</button>
+            </div>
+
+            <textarea id="demo-log" rows="3" class="w-full font-mono text-xs bg-zinc-950 border border-zinc-700 rounded-2xl p-4 focus:outline-none focus:border-emerald-700" placeholder="&lt;13&gt;Mar  5 12:34:56 myserver sshd[1234]: Failed password for root from 203.0.113.77 port 22 ssh2"></textarea>
+            
+            <div class="mt-3 flex gap-3">
+                <button onclick="runDemoAnalysis()" 
+                        class="px-6 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium flex items-center gap-2 active:scale-[0.985]">
+                    Analyze with local "LLM" →
+                </button>
+                <button onclick="clearDemo()" class="px-5 py-2 rounded-2xl border border-zinc-700 text-sm">Clear</button>
+            </div>
+
+            <div id="demo-result" class="hidden mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm">
+                <div class="flex items-center gap-2 mb-2">
+                    <span id="demo-sev" class="px-2 py-0.5 text-xs rounded-full font-semibold"></span>
+                    <span id="demo-src" class="text-xs text-zinc-500"></span>
+                </div>
+                <div id="demo-summary" class="text-zinc-200 whitespace-pre-wrap"></div>
+                <div id="demo-action" class="mt-3 text-xs text-emerald-400/90"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screenshots -->
+    <div id="screenshots" class="max-w-6xl mx-auto px-6 pb-16">
+        <div class="flex items-end justify-between mb-6">
+            <div>
+                <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-1">THE EXPERIENCE</div>
+                <h2 class="font-display text-4xl tracking-tighter">A dashboard you'll actually enjoy using.</h2>
+                <p class="text-zinc-400 mt-1">Fast, calm, information-dense. Built with the same attention to detail as the analysis engine.</p>
+            </div>
+            <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="hidden md:flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 font-medium">
+                View all on GitHub <span>→</span>
+            </a>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Real screenshots go here. Filenames must match exactly. -->
+            <figure class="group">
+                <div class="relative aspect-[16/10] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 ring-1 ring-inset ring-white/5">
+                    <img src="assets/screenshots/dashboard.jpg" alt="RocketLogAI main dashboard with large metrics for total logs, open threats, high/critical, AI analyses, plus Daily Briefing teaser and Device Intelligence cards" class="w-full h-full object-cover transition group-hover:scale-[1.015]" loading="lazy" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs flex items-center justify-between">
+                        <span class="font-medium">Dashboard</span>
+                        <span class="text-emerald-400/80 text-[10px]">Real-time overview</span>
+                    </div>
+                </div>
+                <figcaption class="mt-2.5 text-[11px] text-zinc-400 leading-snug">Live metrics, open threats, AI usage, trusted devices, and the Daily Briefing entry point.</figcaption>
+            </figure>
+
+            <figure class="group">
+                <div class="relative aspect-[16/10] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 ring-1 ring-inset ring-white/5">
+                    <img src="assets/screenshots/daily-briefing.jpg" alt="RocketLogAI Daily Briefing page showing an entertaining recap of the day's logs and threats with chat interface for asking follow-up questions" class="w-full h-full object-cover transition group-hover:scale-[1.015]" loading="lazy" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs flex items-center justify-between">
+                        <span class="font-medium">Daily Briefing</span>
+                        <span class="text-emerald-400/80 text-[10px]">Operator Companion</span>
+                    </div>
+                </div>
+                <figcaption class="mt-2.5 text-[11px] text-zinc-400 leading-snug">Entertaining shift recap. Chat naturally: “what spiked at 3am?”, “draft a fix script”, promote to monitors.</figcaption>
+            </figure>
+
+            <figure class="group">
+                <div class="relative aspect-[16/10] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 ring-1 ring-inset ring-white/5">
+                    <img src="assets/screenshots/ai-assistant.jpg" alt="RocketLogAI built-in AI Assistant chat interface for asking about configuration, automation, iBMi, and submitting feature suggestions" class="w-full h-full object-cover transition group-hover:scale-[1.015]" loading="lazy" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs flex items-center justify-between">
+                        <span class="font-medium">AI Assistant</span>
+                        <span class="text-emerald-400/80 text-[10px]">Self-documenting</span>
+                    </div>
+                </div>
+                <figcaption class="mt-2.5 text-[11px] text-zinc-400 leading-snug">Ask anything about the tool or your environment. Submit suggestions that admins can review in the same UI.</figcaption>
+            </figure>
+
+            <figure class="group">
+                <div class="relative aspect-[16/10] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 ring-1 ring-inset ring-white/5">
+                    <img src="assets/screenshots/threats.jpg" alt="RocketLogAI Threats view listing detected issues with source/destination IPs, ports, geo location, severity, and linked device names from Home Assistant or learned profiles" class="w-full h-full object-cover transition group-hover:scale-[1.015]" loading="lazy" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs flex items-center justify-between">
+                        <span class="font-medium">Threats</span>
+                        <span class="text-emerald-400/80 text-[10px]">With full context</span>
+                    </div>
+                </div>
+                <figcaption class="mt-2.5 text-[11px] text-zinc-400 leading-snug">Per-occurrence IPs/ports, geo enrichment, device names (e.g. “Bedroom Camera”), rule + LLM reasons.</figcaption>
+            </figure>
+
+            <figure class="group">
+                <div class="relative aspect-[16/10] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 ring-1 ring-inset ring-white/5">
+                    <img src="assets/screenshots/device-intel.jpg" alt="RocketLogAI Device Intelligence and detail view showing behavior history, MAC vendor, geo sources, port hygiene, and trust scoring" class="w-full h-full object-cover transition group-hover:scale-[1.015]" loading="lazy" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs flex items-center justify-between">
+                        <span class="font-medium">Device Intelligence</span>
+                        <span class="text-emerald-400/80 text-[10px]">MAC + HA + behavior</span>
+                    </div>
+                </div>
+                <figcaption class="mt-2.5 text-[11px] text-zinc-400 leading-snug">Learned profiles, manufacturer lookup (IEEE + Wireshark), Home Assistant device mapping, and hygiene signals.</figcaption>
+            </figure>
+
+            <figure class="group">
+                <div class="relative aspect-[16/10] bg-zinc-950 rounded-2xl overflow-hidden border border-zinc-800 ring-1 ring-inset ring-white/5">
+                    <img src="assets/screenshots/automation.jpg" alt="RocketLogAI Monitors and Automation page with English-to-script generation, credential profiles, and recent probe results" class="w-full h-full object-cover transition group-hover:scale-[1.015]" loading="lazy" />
+                    <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 text-xs flex items-center justify-between">
+                        <span class="font-medium">Monitors &amp; Automation</span>
+                        <span class="text-emerald-400/80 text-[10px]">Guarded actions</span>
+                    </div>
+                </div>
+                <figcaption class="mt-2.5 text-[11px] text-zinc-400 leading-snug">Service monitors, heartbeat checks, prompt → safe remediation script generator, and human-approval flows.</figcaption>
+            </figure>
+        </div>
+
+        <div class="mt-4 text-center">
+            <p class="text-xs text-zinc-500">Real screenshots from a live instance (with sensitive IPs/hostnames redacted for public sharing). Captured from the actual RocketLogAI UI at port 8787.</p>
+            <p class="text-[10px] text-emerald-400/70 mt-1">The images are now using the clean redacted versions. Originals with full details remain in the folder if you ever need them.</p>
+        </div>
+    </div>
+
+    <!-- Philosophy -->
+    <div class="max-w-4xl mx-auto px-6 pb-16 text-center">
+        <div class="section-card rounded-3xl p-10">
+            <div class="uppercase tracking-widest text-emerald-400 text-xs mb-3">THE PHILOSOPHY</div>
+            <div class="font-display text-3xl tracking-tighter leading-tight mb-4">
+                Most "SIEM + AI" products phone home or require expensive licenses.<br>
+                <span class="text-emerald-400">RocketLogAI is the opposite.</span>
+            </div>
+            <p class="text-zinc-400 max-w-md mx-auto">
+                Everything runs on your machine, against your local model, with full transparency and strong safety rails around any automated response.
+            </p>
+            <div class="mt-6 text-xs text-zinc-500">From AnythingIP — built for people who want control.</div>
+        </div>
+    </div>
+
+    <!-- Open Source & Community -->
+    <div class="max-w-5xl mx-auto px-6 pb-16">
+        <div class="section-card rounded-3xl p-8 md:p-10 border border-emerald-900/30">
+            <div class="grid md:grid-cols-5 gap-8 items-center">
+                <div class="md:col-span-3">
+                    <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-2">OPEN SOURCE</div>
+                    <div class="font-display text-3xl tracking-tighter mb-3">Built in public. For everyone.</div>
+                    <p class="text-zinc-400">The full source (Python core, FastAPI web UI, templates, 20+ prebuilt remediation scripts, rules, HA integration, IBM i automation, installers for Linux/Windows/Docker) is on GitHub under the MIT license.</p>
+                    <p class="mt-3 text-sm text-zinc-400">Contributions welcome: new parsers, custom rules, more remediation scripts, better prompts, Windows Event Log support, docs, or anything else that makes local log intelligence better.</p>
+                </div>
+                <div class="md:col-span-2 flex flex-col gap-3">
+                    <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" 
+                       class="flex items-center justify-center gap-3 px-6 py-3 rounded-2xl bg-white text-black font-semibold hover:bg-zinc-100 active:scale-[0.985] transition">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                        <span>Star on GitHub</span>
+                    </a>
+                    <a href="https://github.com/AnythingIP/RocketLogAI/issues" target="_blank" 
+                       class="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl border border-zinc-700 hover:bg-zinc-900 text-sm transition">
+                        Open an issue or suggestion
+                    </a>
+                    <div class="text-[10px] text-center text-zinc-500 pt-1">Fork • Improve rules • Add integrations • Share remediation scripts</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Get Started -->
+    <div id="start" class="max-w-5xl mx-auto px-6 pb-20">
+        <div class="mb-8 text-center">
+            <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-1">5 MINUTES TO FIRST THREAT</div>
+            <h2 class="font-display text-4xl tracking-tighter">Get started</h2>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+            <!-- Docker (recommended) -->
+            <div class="section-card rounded-3xl p-6">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="px-2 py-0.5 text-[10px] rounded bg-emerald-900 text-emerald-300">RECOMMENDED</span>
+                    <span class="font-semibold">Docker Compose (easiest)</span>
+                </div>
+                <div class="code-block rounded-2xl p-4 text-xs overflow-x-auto mb-3">
+<pre><code>git clone https://github.com/AnythingIP/RocketLogAI.git
+cd rocketlogai
+cp example-config.yaml config.yaml
+# Edit config.yaml — at minimum set llm.base_url
+#   LM Studio: http://host.docker.internal:1234/v1   (or your LAN IP)
+#   Ollama:    http://host.docker.internal:11434/v1
+docker compose up -d --build
+# Open http://your-server:8787   (default login: admin / admin — change it!)</code></pre>
+                </div>
+                <button onclick="copyDocker()" 
+                        class="text-xs px-4 py-2 rounded-2xl border border-zinc-700 hover:bg-zinc-900 transition flex items-center gap-2">
+                    <span>Copy commands</span>
+                </button>
+            </div>
+
+            <!-- Native / pip -->
+            <div class="section-card rounded-3xl p-6">
+                <div class="font-semibold mb-3">Native (Python)</div>
+                <div class="code-block rounded-2xl p-4 text-xs overflow-x-auto mb-3">
+<pre><code>pip install -e ".[web]"
+logsentinel example-config -o config.yaml
+# edit llm.base_url in config.yaml
+logsentinel run
+# or for real syslog port 514: sudo logsentinel run</code></pre>
+                </div>
+                <div class="text-xs text-zinc-500">Also ships one-click installers for Linux (systemd) and Windows (NSSM / scheduled task).</div>
+            </div>
+        </div>
+
+        <div class="mt-6 text-center text-sm">
+            <span class="text-zinc-400">Need a local LLM? </span> 
+            <a href="https://lmstudio.ai" target="_blank" class="text-emerald-400 hover:underline">LM Studio</a> 
+            <span class="text-zinc-400">or</span> 
+            <a href="https://ollama.com" target="_blank" class="text-emerald-400 hover:underline">Ollama</a>
+            <span class="text-zinc-400"> — load a good model (Qwen2.5 14B+ recommended) and point RocketLogAI at it.</span>
+        </div>
+    </div>
+
+    <!-- Footer / CTA -->
+    <div class="border-t border-zinc-800 py-12">
+        <div class="max-w-5xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm">
+            <div class="text-zinc-500">
+                © AnythingIP • RocketLogAI is open source under the MIT license.
+            </div>
+            <div class="flex items-center gap-6">
+                <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="hover:text-white">Documentation</a>
+                <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" id="footer-github" class="hover:text-white">GitHub</a>
+                <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="hover:text-white">Releases</a>
+                <a href="#" class="hover:text-white text-emerald-400">Sponsor / Support development</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind script
+        function initTailwind() {
+            document.documentElement.style.setProperty('--accent', '#10b981');
+        }
+        
+        function copyDocker() {
+            const cmd = `git clone https://github.com/AnythingIP/RocketLogAI.git
+cd rocketlogai
+cp example-config.yaml config.yaml
+# edit llm section then:
+docker compose up -d --build`;
+            navigator.clipboard.writeText(cmd).then(() => {
+                const btns = document.querySelectorAll('button');
+                btns.forEach(b => {
+                    if (b.innerText.includes('Copy') || b.innerText.includes('Copied')) {
+                        const orig = b.innerHTML;
+                        b.innerHTML = 'Copied!';
+                        setTimeout(() => { b.innerHTML = orig; }, 1600);
+                    }
+                });
+            }).catch(() => {
+                alert('Clipboard copy failed — select the code block manually.');
+            });
+        }
+        
+        function toggleMobileNav() {
+            const nav = document.getElementById('mobile-nav');
+            nav.classList.toggle('hidden');
+        }
+        
+        // Keyboard hint
+        function initKeyboard() {
+            document.addEventListener('keydown', function(e) {
+                if (e.key === '/' && document.activeElement.tagName === 'BODY') {
+                    e.preventDefault();
+                    const start = document.getElementById('start');
+                    if (start) start.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+            
+            // Easter egg: press ? for fun fact
+            document.addEventListener('keydown', function(e) {
+                if (e.key === '?') {
+                    const facts = [
+                        "The remediation engine has three independent safety layers by default.",
+                        "Daily Briefing can analyze a full week of logs in one shot if you ask nicely.",
+                        "Device profiles learn MAC stability and typical port behavior over time.",
+                        "The first threat ever detected in testing was a sudo abuse from a test log."
+                    ];
+                    const fact = facts[Math.floor(Math.random()*facts.length)];
+                    alert("Fun fact: " + fact);
+                }
+            });
+        }
+        
+        function init() {
+            initTailwind();
+            initKeyboard();
+            
+            // Make placeholder screenshot cards slightly more interactive
+            document.querySelectorAll('#screenshots .section-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    card.style.transform = 'scale(0.985)';
+                    setTimeout(() => card.style.transform = '', 120);
+                });
+            });
+            
+            // Seed a realistic example
+            const ta = document.getElementById('demo-log');
+            if (ta && !ta.value) {
+                ta.value = '<13>Mar  5 12:34:56 edge-fw sshd[28431]: Failed password for admin from 203.0.113.77 port 22 ssh2';
+            }
+            
+            console.log('%c[RocketLogAI] Website initialized — AnythingIP edition', 'color:#3f3f46;font-size:9px');
+        }
+        
+        const demoExamples = [
+            '<13>Mar  5 12:34:56 edge-fw sshd[28431]: Failed password for admin from 203.0.113.77 port 22 ssh2',
+            '<34>Mar  5 14:22:11 prod-db sudo: user1 : TTY=pts/0 ; PWD=/home/user1 ; USER=root ; COMMAND=/bin/cat /etc/shadow',
+            '<14>Mar  5 03:11:09 homeassistant addon_a0d7b954_nut[123]: UPS driver reports "communication lost" on usbhid-ups'
+        ];
+        
+        function loadExample(i) {
+            const ta = document.getElementById('demo-log');
+            if (ta) ta.value = demoExamples[i] || demoExamples[0];
+            const res = document.getElementById('demo-result');
+            if (res) res.classList.add('hidden');
+        }
+        
+        function runDemoAnalysis() {
+            const log = (document.getElementById('demo-log').value || '').trim();
+            const res = document.getElementById('demo-result');
+            if (!log) return;
+            
+            res.classList.remove('hidden');
+            
+            let sev = 'medium', src = 'unknown', summary = 'No strong signals.', action = '';
+            
+            if (/Failed password .* from .* port 22/.test(log)) {
+                sev = 'high';
+                src = '203.0.113.77:22';
+                summary = 'Multiple failed SSH password attempts against administrative account. Source IP is external. This matches high-confidence brute-force pattern.';
+                action = 'Recommended: Add to dynamic blocklist for 24h • Consider fail2ban or sshguard on source network • Review HA automation to notify on repeated failures from new geos.';
+            } else if (/sudo:.*USER=root ; COMMAND=.*shadow/.test(log)) {
+                sev = 'critical';
+                src = 'prod-db (internal)';
+                summary = 'Privileged user executed command to read /etc/shadow via sudo. This is a classic privilege escalation / credential harvesting attempt or misconfiguration.';
+                action = 'Immediate review required. Correlate with user activity. Consider removing broad sudo rights or requiring explicit approval workflow for shadow access.';
+            } else if (/addon_.*nut|UPS/.test(log)) {
+                sev = 'medium';
+                src = 'homeassistant (addon)';
+                summary = 'Network UPS Tools (NUT) addon in Home Assistant lost communication with the UPS over USB. This has happened repeatedly and can mask real power events.';
+                action = 'Check USB cable / power strip for the UPS. Restart the NUT addon. Promote to a standing monitor with remediation script if it flaps again.';
+            } else {
+                summary = 'Log ingested. Rule engine scored it interesting. In a real run this would be sent to the local LLM for structured analysis (description, IOCs, suggested next step, confidence).';
+                action = 'Real RocketLogAI would also enrich with geo (if enabled), device profile from Home Assistant or learned MAC table, and show it on /threats and /daily.';
+            }
+            
+            document.getElementById('demo-sev').textContent = sev.toUpperCase();
+            document.getElementById('demo-sev').className = `px-2 py-0.5 text-xs rounded-full font-semibold ${
+                sev === 'critical' ? 'bg-red-500/20 text-red-400' :
+                sev === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                'bg-yellow-500/20 text-yellow-400'
+            }`;
+            document.getElementById('demo-src').textContent = src;
+            document.getElementById('demo-summary').textContent = summary;
+            document.getElementById('demo-action').textContent = '→ ' + action;
+        }
+        
+        function clearDemo() {
+            const ta = document.getElementById('demo-log');
+            const res = document.getElementById('demo-result');
+            if (ta) ta.value = '';
+            if (res) res.classList.add('hidden');
+        }
+        
+        window.onload = init;
+    </script>
+</body>
+</html>

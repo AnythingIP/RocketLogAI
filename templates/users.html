@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}User Management • RocketLogAI{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-semibold tracking-tight mb-2">User Management</h1>
+<p class="text-zinc-400 mb-6">Manage local credentials and view current session.</p>
+
+{% if request.query_params.get('saved') %}
+<div class="mb-4 p-3 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded-2xl">Password updated successfully.</div>
+{% endif %}
+{% if request.query_params.get('error') %}
+<div class="mb-4 p-3 bg-red-950 border border-red-900 text-red-300 rounded-2xl">{{ request.query_params.get('error') }}</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
+    <!-- Current Session -->
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4">Current Session</h2>
+        <div class="space-y-3 text-sm">
+            <div><span class="text-zinc-400">Logged in as:</span> <span class="font-mono">{{ current_user }}</span></div>
+            <div><span class="text-zinc-400">Auth method:</span> <span class="font-semibold {% if auth_type == 'domain' %}text-emerald-400{% else %}text-amber-400{% endif %}">{{ auth_type | upper }}</span></div>
+            {% if login_time %}
+            <div><span class="text-zinc-400">Login time:</span> {{ login_time[:19] }}</div>
+            {% endif %}
+        </div>
+        <a href="/logout" class="inline-block mt-4 text-sm text-red-400 hover:text-red-300">Log out</a>
+    </div>
+
+    <!-- Change Local Password -->
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4">Change Local Password</h2>
+        <form method="post" action="/users/change-password" class="space-y-4">
+            <div>
+                <label class="text-xs text-zinc-400">New Password</label>
+                <input type="password" name="new_password" required minlength="4" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Confirm New Password</label>
+                <input type="password" name="confirm_password" required minlength="4" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+            <button type="submit" class="mt-2 px-6 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold">Update Local Password</button>
+        </form>
+        <p class="text-xs text-zinc-500 mt-3">This updates the local fallback credentials used when domain auth is disabled or unavailable.</p>
+    </div>
+</div>
+
+<div class="mt-8 max-w-4xl text-sm text-zinc-400">
+    <strong>Domain users:</strong> Authenticate directly against your Windows Active Directory using the credentials configured in <a href="/config" class="text-emerald-400">Config</a>. No local password is required for domain accounts.
+</div>
+
+<!-- Local Web Users Management (for admins / multi-user setups) -->
+<div class="mt-8 max-w-4xl">
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4">Local Web Users</h2>
+        <p class="text-xs text-zinc-400 mb-4">Create additional local accounts for the web UI (separate from device credential profiles below).</p>
+
+        <!-- Create new user -->
+        <div class="mb-6 border border-zinc-700 rounded-2xl p-4 bg-zinc-950/50">
+            <div class="text-sm font-medium mb-3">Create New Local User</div>
+            <form id="create-local-user-form" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input type="text" id="new-username" placeholder="username" class="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm" required>
+                <input type="password" id="new-password" placeholder="password (min 8 chars)" class="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm" required minlength="8">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="new-is-admin" class="accent-emerald-500"> Admin
+                </label>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Create User</button>
+            </form>
+        </div>
+
+        <!-- List of users -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-zinc-400 border-b border-zinc-700">
+                        <th class="pb-2 pr-4">Username</th>
+                        <th class="pb-2 pr-4">Admin</th>
+                        <th class="pb-2 pr-4">2FA</th>
+                        <th class="pb-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="local-users-tbody">
+                    {% for u in local_users %}
+                    <tr class="border-b border-zinc-800">
+                        <td class="py-2 pr-4 font-mono">{{ u.username }}</td>
+                        <td class="py-2 pr-4">
+                            {% if u.is_admin %}<span class="text-emerald-400 text-xs">ADMIN</span>{% else %}<span class="text-zinc-500 text-xs">user</span>{% endif %}
+                        </td>
+                        <td class="py-2 pr-4">
+                            {% if u.has_totp %}<span class="text-emerald-400 text-xs">enabled</span>{% else %}<span class="text-zinc-500 text-xs">—</span>{% endif %}
+                        </td>
+                        <td class="py-2">
+                            {% if u.username != current_user %}
+                            <button onclick="deleteLocalUser('{{ u.username }}', this)" class="text-xs px-3 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-300">Delete</button>
+                            {% else %}
+                            <span class="text-xs text-zinc-500">current session</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="py-3 text-zinc-500 text-xs">No additional local users yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-[10px] text-zinc-500 mt-3">Device credential profiles (for monitors/remediation) are managed separately on the <a href="/monitors" class="text-emerald-400">Monitors</a> page.</p>
+    </div>
+</div>
+
+<script>
+document.getElementById('create-local-user-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const username = document.getElementById('new-username').value.trim();
+    const password = document.getElementById('new-password').value;
+    const isAdmin = document.getElementById('new-is-admin').checked;
+
+    if (!username || !password) return;
+
+    try {
+        const res = await fetch('/api/local-users', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username, password, is_admin: isAdmin })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert('User created: ' + username);
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Failed'));
+        }
+    } catch (err) {
+        alert('Request failed: ' + err);
+    }
+});
+
+async function deleteLocalUser(username, btn) {
+    if (!confirm('Delete local user "' + username + '"? This cannot be undone.')) return;
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/local-users/' + encodeURIComponent(username), { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Delete failed: ' + (data.error || ''));
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+        btn.disabled = false;
+    }
+}
+</script>
+
+{% if has_totp_support %}
+<!-- Two-Factor Authentication -->
+<div class="mt-8 max-w-4xl">
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4 flex items-center gap-2">
+            <span>🔐</span> Two-Factor Authentication (Microsoft Authenticator)
+        </h2>
+
+        {% if cfg.web.totp_secret %}
+        <div class="p-4 bg-emerald-950/40 border border-emerald-900 rounded-2xl text-sm">
+            <div class="font-medium text-emerald-300">2FA is currently enabled for the local admin account.</div>
+            <p class="text-xs mt-2 text-zinc-400">You will be prompted for a 6-digit code from your authenticator app after entering your password.</p>
+            <form method="post" action="/users/disable-2fa" class="mt-3">
+                <button type="submit" class="text-xs px-3 py-1 bg-red-900/60 hover:bg-red-800 rounded-lg">Disable 2FA</button>
+            </form>
+        </div>
+        {% else %}
+        <div class="text-sm text-zinc-400 mb-4">
+            Protect your local admin account with a time-based one-time password (TOTP) using Microsoft Authenticator, Google Authenticator, or any compatible app.
+        </div>
+
+        {% if totp_setup and totp_setup.secret %}
+        <div class="p-4 border border-zinc-700 rounded-2xl">
+            <div class="font-medium mb-2">Scan this QR code with Microsoft Authenticator:</div>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ totp_setup.uri | urlencode }}" alt="2FA QR Code" class="mx-auto my-4 border border-zinc-600 p-1 rounded-lg bg-white">
+
+            <div class="text-xs bg-zinc-950 p-3 rounded-xl font-mono break-all">
+                Secret (manual entry): {{ totp_setup.secret }}
+            </div>
+
+            <form method="post" action="/users/enable-2fa" class="mt-4">
+                <input type="hidden" name="secret" value="{{ totp_setup.secret }}">
+                <button type="submit" class="w-full py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold">Enable 2FA with this code</button>
+            </form>
+        </div>
+        {% else %}
+        <form method="post" action="/users/setup-2fa">
+            <button type="submit" class="px-5 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-sm">Start 2FA Setup</button>
+        </form>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

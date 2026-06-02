@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Integrations{% endblock %}
+
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">Integrations</h1>
+        <p class="text-zinc-400 mt-1">Connect Home Assistant, cloud LLMs, and more</p>
+    </div>
+    <a href="/" class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">← Dashboard</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Home Assistant -->
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <span class="text-2xl">🏠</span>
+            <h2 class="text-xl font-semibold">Home Assistant</h2>
+            {% if ha_status.connected %}
+            <span class="px-2 py-0.5 text-xs rounded-full bg-emerald-950 text-emerald-400 border border-emerald-900">Connected</span>
+            {% else %}
+            <span class="px-2 py-0.5 text-xs rounded-full bg-zinc-800 text-zinc-400">Not connected</span>
+            {% endif %}
+        </div>
+
+        {% if ha_status.url %}
+        <div class="text-sm text-zinc-400 mb-4">Connected to <span class="font-mono">{{ ha_status.url }}</span></div>
+        {% endif %}
+
+        <div class="text-sm space-y-2">
+            <p>Deep integration allows:</p>
+            <ul class="list-disc pl-5 text-zinc-400 space-y-1">
+                <li>Automatic device/entity enrichment on threats (by IP/MAC)</li>
+                <li>Rich alerts: persistent notifications, custom events, notify services</li>
+                <li>Live sensors updated from RocketLogAI (open threats, last threat, etc.)</li>
+            </ul>
+        </div>
+
+        <div class="mt-4 flex items-center gap-3">
+            <button onclick="testHA()" class="text-xs px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Test Connection</button>
+            <span id="ha-test-result" class="text-xs text-zinc-400"></span>
+        </div>
+        <div class="mt-2 text-xs text-zinc-500">
+            Configure in <code>config.yaml</code> under <code>home_assistant:</code> (or the web Config page)
+        </div>
+    </div>
+
+    <!-- LLM Providers -->
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <span class="text-2xl">🧠</span>
+            <h2 class="text-xl font-semibold">LLM Providers</h2>
+        </div>
+
+        <div class="text-sm mb-4">
+            Current: <span class="font-mono bg-zinc-950 px-2 py-0.5 rounded">{{ current_llm }}</span>
+        </div>
+
+        <div class="space-y-3 text-sm">
+            <div class="p-3 bg-zinc-950 rounded-2xl border border-zinc-800">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="font-medium">Current Provider: <span class="font-mono text-emerald-300">{{ cfg.llm.provider | default('local') | title }}</span></div>
+                        <div class="text-xs text-zinc-400 mt-0.5">{{ cfg.llm.base_url }}</div>
+                        <button onclick="testLLM()" class="mt-1 text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700">Test Connection</button>
+                        <span id="llm-test-result" class="text-[10px] ml-2 text-zinc-400"></span>
+                    </div>
+                    </div>
+                    <a href="/config" class="text-xs px-3 py-1 bg-emerald-900/60 hover:bg-emerald-800 rounded-xl">Configure →</a>
+                </div>
+            </div>
+
+            <div class="text-xs text-zinc-400">
+                Supported: <strong>Local</strong>, <strong>OpenAI</strong>, <strong>Grok</strong>, <strong>Anthropic</strong>, <strong>Azure OpenAI</strong>, <strong>Microsoft 365 Copilot</strong>, and Custom.
+                Configure under <a href="/config" class="text-emerald-400 underline">Config → LLM</a>.
+            </div>
+        </div>
+
+    <!-- API Tokens -->
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <span class="text-2xl">🔑</span>
+            <h2 class="text-xl font-semibold">API Tokens</h2>
+        </div>
+
+        <div class="text-sm text-zinc-400 mb-3">
+            Create long-lived tokens so external scripts, other agents, or tools can call RocketLogAI APIs securely (like Home Assistant tokens).
+        </div>
+
+        <div class="mt-3">
+            <a href="/config#api-tokens" class="text-sm px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Manage API Tokens →</a>
+        </div>
+        <div class="mt-2 text-[10px] text-zinc-500">
+            Use with <code class="bg-zinc-950 px-1">Authorization: Bearer rla_...</code> header on any <code>/api/*</code> endpoint.
+        </div>
+    </div>
+</div>
+
+<div class="mt-8 text-xs text-zinc-500">
+    LLM provider and Home Assistant settings are fully configurable via the <a href="/config" class="text-emerald-400 underline">Config page</a>. The top bar shows the active LLM provider.
+</div>
+
+<script>
+async function testHA() {
+    const el = document.getElementById('ha-test-result');
+    el.textContent = 'Testing...';
+    const res = await fetch('/api/test/ha', {method: 'POST'});
+    const data = await res.json();
+    if (data.ok) {
+        el.innerHTML = `<span class="text-emerald-400">✓ ${data.message || 'OK'}</span>`;
+    } else {
+        el.innerHTML = `<span class="text-red-400">✗ ${data.error || 'Failed'}</span>`;
+    }
+}
+async function testLLM() {
+    const el = document.getElementById('llm-test-result');
+    if (!el) return;
+    el.textContent = 'Testing...';
+    const res = await fetch('/api/test/llm', {method: 'POST'});
+    const data = await res.json();
+    if (data.ok) {
+        el.innerHTML = `<span class="text-emerald-400">✓ ${data.message || 'OK'}</span>`;
+    } else {
+        el.innerHTML = `<span class="text-red-400">✗ ${data.error || 'Failed'}</span>`;
+    }
+}
+</script>
+{% endblock %}

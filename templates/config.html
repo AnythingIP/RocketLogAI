@@ -1,0 +1,985 @@
+{% extends "base.html" %}
+{% block title %}Configuration • RocketLogAI{% endblock %}
+{% block content %}
+<h1 class="text-4xl font-semibold tracking-tighter mb-2">Configuration</h1>
+<p class="text-zinc-400 mb-4">Manage all major RocketLogAI settings from the browser. Changes are written directly to your <code>config.yaml</code>.</p>
+
+<div class="mb-8 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-sm">
+    <div class="font-medium mb-1">Quick Guidance</div>
+    <ul class="text-xs text-zinc-400 space-y-1">
+        <li><strong>LLM section:</strong> Point at your local model server or a cloud provider. Test connection before saving.</li>
+        <li><strong>Web / SSL:</strong> HTTP and HTTPS can run simultaneously on different ports (web_port + https_port). Self-signed certs are auto-generated when needed.</li>
+        <li><strong>Geo:</strong> Enable offline IP geolocation. Provide path to GeoLite2-City.mmdb or leave blank for auto-detect.</li>
+        <li><strong>Blacklist:</strong> External IPs on public blocklists get automatically escalated to high risk.</li>
+        <li><strong>Devices + AI:</strong> RocketLogAI learns normal behavior per device (including MAC history) and uses AI to decide trust vs. investigate. It can now also identify the manufacturer from the MAC address.</li>
+    </ul>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="mb-4 p-3 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded-2xl">Settings saved. Some changes may require restart.</div>
+{% endif %}
+
+<form method="post" action="/config/save" class="max-w-5xl space-y-10">
+
+    <!-- LLM / AI Backend -->
+    <div class="section-card rounded-3xl p-7">
+        <div class="flex items-center gap-3 mb-6">
+            <span class="text-2xl">🤖</span>
+            <h2 class="font-semibold text-2xl tracking-tight">LLM / AI Backend</h2>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-5">
+            <div class="lg:col-span-2">
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">LLM Provider</label>
+                <div class="flex flex-wrap gap-2" onchange="updateLLMProviderHints()">
+                    {% set current_provider = cfg.llm.provider %}
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="local" class="peer hidden" {% if current_provider == 'local' or not current_provider %}checked{% endif %} onchange="updateLLMProviderHints(); showLocalFlavor()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">Local (LM Studio, Ollama, vLLM...)</div></label>
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="openai" class="peer hidden" {% if current_provider == 'openai' %}checked{% endif %} onchange="updateLLMProviderHints()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">OpenAI</div></label>
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="grok" class="peer hidden" {% if current_provider == 'grok' %}checked{% endif %} onchange="updateLLMProviderHints()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">Grok (xAI)</div></label>
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="anthropic" class="peer hidden" {% if current_provider == 'anthropic' %}checked{% endif %} onchange="updateLLMProviderHints()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">Anthropic</div></label>
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="custom" class="peer hidden" {% if current_provider == 'custom' %}checked{% endif %} onchange="updateLLMProviderHints()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">Custom / Other</div></label>
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="azure" class="peer hidden" {% if current_provider == 'azure' or current_provider == 'azure_openai' %}checked{% endif %} onchange="updateLLMProviderHints()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">Azure OpenAI</div></label>
+                    <label class="cursor-pointer"><input type="radio" name="llm_provider" value="microsoft_365_copilot" class="peer hidden" {% if current_provider == 'microsoft_365_copilot' %}checked{% endif %} onchange="updateLLMProviderHints()"><div class="peer-checked:bg-emerald-900/40 peer-checked:border-emerald-600 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">Microsoft 365 Copilot</div></label>
+                </div>
+
+                <!-- Local server flavor (only relevant when Local is selected) -->
+                <div id="local-flavor-row" class="mt-3" style="display: none;">
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">Local server type (prefills correct defaults)</label>
+                    <select id="llm_local_flavor" name="llm_local_flavor" class="bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm" onchange="applyLocalFlavor()">
+                        <option value="lmstudio">LM Studio (http://localhost:1234/v1)</option>
+                        <option value="ollama">Ollama (http://localhost:11434/v1)</option>
+                        <option value="other">Other / vLLM / custom local</option>
+                    </select>
+                    <div class="text-[10px] text-emerald-400 mt-1">Choosing here will set the right Base URL + API key hint for you.</div>
+                </div>
+
+                <div id="llm-hint" class="text-xs text-emerald-400 mt-2 min-h-[18px]"></div>
+            </div>
+
+            <div id="generic-llm-fields">
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Base URL</label>
+                <input name="llm_base_url" value="{{ cfg.llm.base_url }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 font-mono text-sm">
+            </div>
+            <div id="generic-llm-key">
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">API Key</label>
+                <input name="llm_api_key" value="{{ cfg.llm.api_key }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+
+            <div class="lg:col-span-2">
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Model</label>
+                <div class="flex gap-2 items-end">
+                    <div class="flex-1">
+                        <input type="text" name="llm_model" value="{{ cfg.llm.model }}" placeholder="e.g. qwen2.5-coder-14b or gpt-4o (leave blank to auto-detect on test)" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 font-mono text-sm">
+                    </div>
+                    <button type="button" onclick="testLLMConnection()" class="px-4 py-2 rounded-2xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-sm font-medium active:scale-[0.985] whitespace-nowrap">Test Connection</button>
+                </div>
+                <div id="llm-test-status" class="text-xs mt-1 min-h-[18px]"></div>
+                <div class="text-[10px] text-zinc-500 mt-0.5">Enter the model name, or leave blank and click "Test Connection" — it will auto-detect from your LLM server and fill it in.</div>
+            </div>
+
+            <!-- Azure / Microsoft 365 Copilot specific fields (shown when those providers selected) -->
+            <div id="azure-llm-fields" class="lg:col-span-2 border border-zinc-700 rounded-2xl p-4 bg-zinc-950/60">
+                <div class="text-xs font-medium text-purple-400 mb-2">Azure OpenAI / Microsoft 365 Copilot Settings</div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Azure Endpoint (e.g. https://your-resource.openai.azure.com/)</label>
+                        <input name="llm_azure_endpoint" value="{{ cfg.llm.azure_endpoint }}" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Azure Deployment / Model Name</label>
+                        <input name="llm_azure_deployment" value="{{ cfg.llm.azure_deployment }}" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">API Version</label>
+                        <input name="llm_azure_api_version" value="{{ cfg.llm.azure_api_version or '2024-10-21' }}" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-2">For Microsoft 365 Copilot, use your Azure OpenAI resource that powers Copilot in your tenant. Select the "Microsoft 365 Copilot" radio above.</p>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Temperature</label>
+                <input type="number" step="0.1" name="llm_temperature" value="{{ cfg.llm.temperature }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Max Tokens</label>
+                <input type="number" name="llm_max_tokens" value="{{ cfg.llm.max_tokens }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+        </div>
+        <p class="text-xs text-zinc-500 mt-4">Local servers (LM Studio, Ollama, vLLM...) use provider "local" + correct base URL (use the dropdown for easy defaults). Cloud providers (OpenAI, Grok, Anthropic, Azure, M365) have their own endpoints and keys.</p>
+
+        <!-- Multi-LLM with priority / failover -->
+        <div class="mt-4 pt-4 border-t border-zinc-700">
+            <div class="text-sm font-medium mb-1">LLM Servers (priority order - first enabled &amp; responding is used; others are automatic fallbacks)</div>
+            <textarea name="llm_servers" rows="5" class="w-full font-mono text-xs bg-zinc-950 border border-zinc-700 rounded-xl p-2">{{ llm_servers_json or '[]' }}</textarea>
+            <p class="text-[10px] text-zinc-500">JSON list. Example: [{"provider":"local","base_url":"http://localhost:11434/v1","api_key":"ollama","enabled":true},{"provider":"local","base_url":"http://localhost:1234/v1","enabled":true}] — order = priority. The system tries them in sequence on errors/timeouts.</p>
+            <div class="text-[10px] mt-1">If only one is configured it behaves exactly as before. Status is shown via the Test Connection button (uses the prioritized list).</div>
+        </div>
+    </div>
+
+<script>
+function updateLLMProviderHints() {
+    const provider = document.querySelector('input[name="llm_provider"]:checked')?.value || 'local';
+    const baseUrlInput = document.querySelector('input[name="llm_base_url"]');
+    const hintEl = document.getElementById('llm-hint');
+    const flavorRow = document.getElementById('local-flavor-row');
+
+    let hint = '';
+    let recommendedUrl = '';
+    let recommendedKey = '';
+
+    const isLocal = provider === 'local';
+
+    if (flavorRow) {
+        flavorRow.style.display = isLocal ? '' : 'none';
+    }
+
+    switch(provider) {
+        case 'local':
+            // Default to LM Studio; the flavor select will override via applyLocalFlavor
+            hint = 'Local OpenAI-compatible server (LM Studio, Ollama, vLLM, etc.). Use the "Local server type" dropdown below to prefill the correct URL.';
+            recommendedUrl = 'http://localhost:1234/v1';
+            recommendedKey = 'lm-studio';
+            break;
+        case 'openai':
+            hint = 'Official OpenAI API (cloud). Get your key from platform.openai.com';
+            recommendedUrl = 'https://api.openai.com/v1';
+            recommendedKey = '';
+            break;
+        case 'grok':
+            hint = 'xAI Grok API (cloud). Get your key from grok.x.ai';
+            recommendedUrl = 'https://api.x.ai/v1';
+            recommendedKey = '';
+            break;
+        case 'anthropic':
+            hint = 'Anthropic Claude API (cloud). Note: usually needs a proxy for full OpenAI compat or use their SDK.';
+            recommendedUrl = 'https://api.anthropic.com/v1';
+            recommendedKey = '';
+            break;
+        case 'custom':
+            hint = 'Any custom OpenAI-compatible endpoint (LiteLLM, vLLM remote, Together.ai, etc.)';
+            break;
+        case 'azure':
+        case 'azure_openai':
+            hint = 'Azure OpenAI (cloud / corporate, used by many M365 Copilot setups). Use the Azure fields below.';
+            recommendedUrl = 'https://YOUR-RESOURCE.openai.azure.com/';
+            break;
+        case 'microsoft_365_copilot':
+            hint = 'Microsoft 365 Copilot via Azure OpenAI (cloud). Configure the Azure / M365 fields below.';
+            recommendedUrl = 'https://YOUR-RESOURCE.openai.azure.com/';
+            break;
+    }
+
+    if (hintEl) hintEl.textContent = hint;
+
+    // Only auto-fill base_url if empty or looks like previous default (localhost or 127)
+    if (baseUrlInput && (!baseUrlInput.value || baseUrlInput.value.includes('localhost') || baseUrlInput.value.includes('127.0.0.1') || baseUrlInput.value.includes('1234/v1'))) {
+        if (recommendedUrl) baseUrlInput.value = recommendedUrl;
+    }
+
+    // Also set a sensible api key hint for known locals
+    const keyInput = document.querySelector('input[name="llm_api_key"]');
+    if (keyInput && (provider === 'local' || !keyInput.value)) {
+        if (recommendedKey && (!keyInput.value || keyInput.value === 'lm-studio' || keyInput.value === 'ollama')) {
+            keyInput.value = recommendedKey;
+        }
+    }
+
+    // Toggle sections for Azure/M365 to avoid URL duplication confusion
+    const genericFields = document.getElementById('generic-llm-fields');
+    const genericKey = document.getElementById('generic-llm-key');
+    const azureFields = document.getElementById('azure-llm-fields');
+    const isAzure = provider === 'azure' || provider === 'azure_openai' || provider === 'microsoft_365_copilot';
+
+    if (genericFields) genericFields.style.display = isAzure ? 'none' : '';
+    if (genericKey) genericKey.style.display = isAzure ? 'none' : '';
+    if (azureFields) azureFields.style.display = isAzure ? '' : 'none';
+
+    // When choosing Azure/M365, prefill the azure endpoint if empty (tenant friendly)
+    if (isAzure) {
+        const azureEp = document.querySelector('input[name="llm_azure_endpoint"]');
+        if (azureEp && !azureEp.value) {
+            azureEp.value = 'https://YOUR-RESOURCE.openai.azure.com/';
+        }
+        const azureDep = document.querySelector('input[name="llm_azure_deployment"]');
+        if (azureDep && !azureDep.value) {
+            azureDep.value = 'gpt-4o';  // common for business tenants / Copilot
+        }
+    }
+}
+
+function showLocalFlavor() {
+    const flavorRow = document.getElementById('local-flavor-row');
+    if (flavorRow) {
+        const provider = document.querySelector('input[name="llm_provider"]:checked')?.value;
+        flavorRow.style.display = (provider === 'local') ? '' : 'none';
+    }
+}
+
+function applyLocalFlavor() {
+    const flavor = document.getElementById('llm_local_flavor')?.value || 'lmstudio';
+    const baseUrlInput = document.querySelector('input[name="llm_base_url"]');
+    const keyInput = document.querySelector('input[name="llm_api_key"]');
+    const hintEl = document.getElementById('llm-hint');
+
+    let url = '';
+    let key = '';
+    let extraHint = '';
+
+    if (flavor === 'ollama') {
+        url = 'http://localhost:11434/v1';
+        key = 'ollama';
+        extraHint = 'Ollama OpenAI compatibility endpoint. Make sure Ollama is running with `OLLAMA_HOST` or just default, and it will serve /v1.';
+    } else if (flavor === 'lmstudio') {
+        url = 'http://localhost:1234/v1';
+        key = 'lm-studio';
+        extraHint = 'LM Studio default (start the local server in LM Studio).';
+    } else {
+        url = 'http://localhost:8000/v1';
+        key = '';
+        extraHint = 'Point at your local OpenAI-compatible server root (it will get /v1 appended if needed).';
+    }
+
+    if (baseUrlInput) baseUrlInput.value = url;
+    if (keyInput) keyInput.value = key;
+    if (hintEl) hintEl.textContent = extraHint;
+}
+
+// Run on load
+document.addEventListener('DOMContentLoaded', () => {
+    updateLLMProviderHints();
+    showLocalFlavor();
+    initGeoProvidersUI();
+
+    // Try to pre-select a reasonable local flavor based on current base_url
+    const base = (document.querySelector('input[name="llm_base_url"]') || {}).value || '';
+    const flavorSel = document.getElementById('llm_local_flavor');
+    if (flavorSel && base) {
+        if (base.includes('11434')) {
+            flavorSel.value = 'ollama';
+        } else if (base.includes('1234')) {
+            flavorSel.value = 'lmstudio';
+        }
+    }
+});
+
+// === Geo Providers Easy UI ===
+function initGeoProvidersUI() {
+    const hidden = document.getElementById('geo_providers_hidden');
+    const raw = document.getElementById('geo_providers_raw');
+    if (!hidden) return;
+
+    let providers = [];
+    try {
+        providers = JSON.parse(hidden.value || '[]');
+    } catch (e) { providers = []; }
+
+    renderGeoProvidersUI(providers);
+
+    // Keep raw in sync
+    if (raw) {
+        raw.value = JSON.stringify(providers, null, 2);
+    }
+}
+
+function renderGeoProvidersUI(providers) {
+    const container = document.getElementById('geo-providers-ui');
+    if (!container) return;
+    container.innerHTML = '';
+
+    providers.forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.className = 'flex flex-wrap gap-2 items-center bg-zinc-950 border border-zinc-700 rounded-xl p-2 text-xs';
+        row.innerHTML = `
+            <select class="bg-zinc-900 border border-zinc-600 rounded px-2 py-1" onchange="updateGeoProvider(${idx}, this)">
+                <option value="maxmind" ${p.type === 'maxmind' ? 'selected' : ''}>maxmind</option>
+                <option value="ipinfo" ${p.type === 'ipinfo' ? 'selected' : ''}>ipinfo</option>
+                <option value="ipapi" ${p.type === 'ipapi' ? 'selected' : ''}>ipapi</option>
+                <option value="generic_http" ${p.type === 'generic_http' ? 'selected' : ''}>generic_http</option>
+            </select>
+            ${p.token !== undefined ? `<input placeholder="token/key" value="${p.token || ''}" class="bg-zinc-900 border border-zinc-600 rounded px-2 py-1 flex-1" oninput="updateGeoProviderField(${idx}, 'token', this.value)">` : ''}
+            <input placeholder="priority" type="number" value="${p.priority || 10}" class="bg-zinc-900 border border-zinc-600 rounded px-2 py-1 w-20" oninput="updateGeoProviderField(${idx}, 'priority', parseInt(this.value) || 10)">
+            <button type="button" onclick="removeGeoProvider(${idx})" class="text-red-400 hover:text-red-300 px-1">✕</button>
+        `;
+        container.appendChild(row);
+    });
+
+    syncGeoProvidersToHidden(providers);
+}
+
+window.addGeoProviderRow = function(type) {
+    const container = document.getElementById('geo-providers-ui');
+    if (!container) return;
+
+    const hidden = document.getElementById('geo_providers_hidden');
+    let providers = [];
+    try { providers = JSON.parse(hidden.value || '[]'); } catch(e) {}
+
+    const newP = { type: type, priority: (providers.length + 1) * 10 };
+    if (type === 'ipinfo' || type === 'ipapi') newP.token = '';
+    if (type === 'generic_http') {
+        newP.url_template = 'https://api.example.com/{ip}?key=YOURKEY';
+        newP.response_mapping = { country: 'country', city: 'city', lat: 'lat', lon: 'lon' };
+    }
+
+    providers.push(newP);
+    renderGeoProvidersUI(providers);
+};
+
+window.updateGeoProvider = function(idx, selectEl) {
+    const hidden = document.getElementById('geo_providers_hidden');
+    let providers = JSON.parse(hidden.value || '[]');
+    providers[idx].type = selectEl.value;
+
+    // Re-render to show/hide token field
+    renderGeoProvidersUI(providers);
+};
+
+window.updateGeoProviderField = function(idx, field, value) {
+    const hidden = document.getElementById('geo_providers_hidden');
+    let providers = JSON.parse(hidden.value || '[]');
+    providers[idx][field] = value;
+    hidden.value = JSON.stringify(providers);
+};
+
+window.removeGeoProvider = function(idx) {
+    const hidden = document.getElementById('geo_providers_hidden');
+    let providers = JSON.parse(hidden.value || '[]');
+    providers.splice(idx, 1);
+    renderGeoProvidersUI(providers);
+};
+
+window.syncGeoProvidersToHidden = function(providersOverride) {
+    const hidden = document.getElementById('geo_providers_hidden');
+    const raw = document.getElementById('geo_providers_raw');
+    if (!hidden) return;
+
+    let providers = providersOverride;
+    if (!providers) {
+        try {
+            providers = raw ? JSON.parse(raw.value || '[]') : [];
+        } catch(e) { providers = []; }
+    }
+
+    hidden.value = JSON.stringify(providers);
+
+    // Also update the visual rows if they exist
+    const container = document.getElementById('geo-providers-ui');
+    if (container && !providersOverride) {
+        // Avoid infinite loop
+    }
+};
+</script>
+
+    <!-- Home Assistant Integration -->
+    <div class="section-card rounded-3xl p-7">
+        <div class="flex items-center gap-3 mb-6">
+            <span class="text-2xl">🏠</span>
+            <h2 class="font-semibold text-2xl tracking-tight">Home Assistant</h2>
+        </div>
+
+        <div class="space-y-6">
+            <div class="flex items-center gap-3">
+                <input type="checkbox" name="ha_enabled" {% if cfg.home_assistant.enabled %}checked{% endif %} class="accent-emerald-500 w-4 h-4">
+                <span class="font-medium">Enable Home Assistant Integration</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-5">
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1.5">Home Assistant URL</label>
+                    <input name="ha_url" value="{{ cfg.home_assistant.url }}" placeholder="http://homeassistant.local:8123" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 font-mono text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1.5">Long-lived Access Token</label>
+                    <input type="password" name="ha_token" value="{{ cfg.home_assistant.token }}" placeholder="eyJhbGciOiJIUzI1NiIs..." class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+                    <p class="text-[10px] text-zinc-500 mt-1">Create in HA → Profile → Long-Lived Access Tokens</p>
+                </div>
+
+                <div class="flex items-center gap-3 mt-2">
+                    <input type="checkbox" name="ha_auto_enrich" {% if cfg.home_assistant.auto_enrich %}checked{% endif %} class="accent-emerald-500">
+                    <span class="text-sm">Auto-enrich threats with HA device info (by IP)</span>
+                </div>
+
+                <div class="flex items-center gap-3 mt-2">
+                    <input type="checkbox" name="ha_create_sensors" {% if cfg.home_assistant.create_sensors %}checked{% endif %} class="accent-emerald-500">
+                    <span class="text-sm">Create live sensors in HA (open threats, last threat, etc.)</span>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Notify Services (one per line)</label>
+                <textarea name="ha_notify_services" rows="3" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 font-mono text-sm" placeholder="notify.mobile_app_pixel&#10;notify.telegram_chat">{{ (cfg.home_assistant.notify_services or [])|join('\n') }}</textarea>
+                <p class="text-[10px] text-zinc-500 mt-1">These services will be called when major threats are confirmed.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Geo / Multi-Source IP Geolocation (supports multiple providers at once) -->
+    <div class="section-card rounded-3xl p-7">
+        <div class="flex items-center gap-3 mb-6">
+            <span class="text-2xl">🌍</span>
+            <h2 class="font-semibold text-2xl tracking-tight">Geo / IP Geolocation (Multiple Sources)</h2>
+        </div>
+
+        <div class="space-y-5">
+            <div class="flex items-center gap-3">
+                <input type="checkbox" name="geo_enabled" {% if cfg.geo.enabled %}checked{% endif %} class="accent-emerald-500 w-4 h-4">
+                <span class="font-medium">Enable geolocation (can combine MaxMind + paid services like ipinfo, ipapi, etc.)</span>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Merge Strategy</label>
+                <select name="geo_merge_strategy" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                    <option value="first_success" {% if cfg.geo.merge_strategy == 'first_success' %}selected{% endif %}>first_success (use the first provider that returns data)</option>
+                    <option value="aggregate" {% if cfg.geo.merge_strategy == 'aggregate' %}selected{% endif %}>aggregate (combine fields from all successful providers)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Legacy single MaxMind path (still works)</label>
+                <input name="geo_mmdb_path" value="{{ cfg.geo.mmdb_path }}" placeholder="Leave empty for auto-detect" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5 font-mono text-sm">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Multi Providers (easy menu + JSON)</label>
+                
+                <!-- Easy menu-driven geo providers -->
+                <div id="geo-providers-ui" class="space-y-2 mb-3"></div>
+                <div class="flex gap-2 mb-2">
+                    <button type="button" onclick="addGeoProviderRow('maxmind')" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">+ MaxMind</button>
+                    <button type="button" onclick="addGeoProviderRow('ipinfo')" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">+ ipinfo</button>
+                    <button type="button" onclick="addGeoProviderRow('ipapi')" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">+ ipapi</button>
+                    <button type="button" onclick="addGeoProviderRow('generic_http')" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">+ Custom HTTP</button>
+                </div>
+
+                <!-- Hidden JSON that actually gets submitted -->
+                <input type="hidden" name="geo_providers" id="geo_providers_hidden" value='{{ geo_providers_json | safe }}'>
+
+                <!-- Advanced raw JSON (still available) -->
+                <details class="text-xs">
+                    <summary class="cursor-pointer text-zinc-400 hover:text-zinc-300">Advanced: Edit raw JSON</summary>
+                    <textarea id="geo_providers_raw" rows="4" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl p-3 font-mono text-xs mt-1" oninput="syncGeoProvidersToHidden()">{{ geo_providers_json | safe }}</textarea>
+                </details>
+
+                <p class="text-[10px] text-zinc-500 mt-1">
+                    Use the buttons above for easy setup. Lower priority = tried first. All sources work together and show source badges in threats/devices/maps/activity.
+                </p>
+            </div>
+
+            <div class="text-xs text-emerald-400">
+                Status is shown on the Monitors page (and /activity). Changes take effect after restart.
+            </div>
+        </div>
+    </div>
+
+    <!-- Web Server -->
+    <div class="section-card rounded-3xl p-7">
+        <div class="flex items-center gap-3 mb-6">
+            <span class="text-2xl">🌐</span>
+            <h2 class="font-semibold text-2xl tracking-tight">Web Server</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Listen Address</label>
+                <select name="web_host" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+                    <option value="127.0.0.1" {% if cfg.web.web_host == '127.0.0.1' %}selected{% endif %}>Localhost only</option>
+                    <option value="0.0.0.0" {% if cfg.web.web_host == '0.0.0.0' %}selected{% endif %}>All interfaces (0.0.0.0)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Port (HTTP)</label>
+                <input type="number" name="web_port" value="{{ cfg.web.web_port }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">HTTPS Port</label>
+                <input type="number" name="https_port" value="{{ cfg.web.https_port }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+                <div class="text-[10px] text-zinc-500 mt-0.5">When both HTTP and HTTPS are enabled, they run on separate ports.</div>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1.5">Public Domain</label>
+                <input name="web_domain" value="{{ cfg.web.web_domain }}" placeholder="logsentinel.internal" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+        </div>
+
+        <div class="mt-6 pt-6 border-t border-zinc-800">
+            <div class="text-xs text-zinc-400 mb-3">
+                <strong>Tip:</strong> Both HTTP and HTTPS are enabled by default. 
+                RocketLogAI can auto-generate a self-signed certificate so you get HTTPS immediately. 
+                For production, use Let's Encrypt or upload your own certs.
+            </div>
+            <div class="flex items-center gap-2 mb-4">
+                <input type="checkbox" name="http_enabled" {% if cfg.web.http_enabled %}checked{% endif %} class="accent-emerald-500">
+                <span class="font-medium">Enable HTTP (recommended alongside HTTPS for compatibility)</span>
+            </div>
+
+            <div class="flex items-center gap-2 mb-4">
+                <input type="checkbox" name="ssl_enabled" {% if cfg.web.ssl_enabled %}checked{% endif %} class="accent-emerald-500">
+                <span class="font-medium">Enable HTTPS / SSL (enabled by default with auto-generated certificate)</span>
+            </div>
+
+            <div class="flex items-center gap-2 mb-4 ml-6">
+                <input type="checkbox" name="ssl_auto_generate" {% if cfg.web.ssl_auto_generate %}checked{% endif %} class="accent-emerald-500">
+                <span class="text-sm">Auto-generate self-signed certificate if none is provided</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Certificate Path (PEM)</label>
+                    <input name="ssl_certfile" value="{{ cfg.web.ssl_certfile }}" placeholder="Leave blank to use auto-generated or upload below" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Private Key Path (PEM)</label>
+                    <input name="ssl_keyfile" value="{{ cfg.web.ssl_keyfile }}" placeholder="Leave blank to use auto-generated" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <label class="block text-xs text-zinc-400 mb-1">Upload Certificate (optional)</label>
+                <input type="file" name="cert_upload" class="text-sm">
+                <p class="text-[10px] text-zinc-500 mt-1">Uploading will save the certs into <code>data/ssl/</code> and update the paths above after restart.</p>
+            </div>
+
+            <div class="mt-4 pt-4 border-t border-zinc-800">
+                <div class="flex items-center gap-2 mb-2">
+                    <input type="checkbox" name="letsencrypt_enabled" {% if cfg.web.letsencrypt_enabled %}checked{% endif %} class="accent-emerald-500">
+                    <span class="font-medium">Use Let's Encrypt (free trusted certificates)</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 ml-6">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Let's Encrypt Email</label>
+                        <input name="letsencrypt_email" value="{{ cfg.web.letsencrypt_email }}" placeholder="you@yourdomain.com" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">Domain (uses Web Domain above if empty)</label>
+                        <input name="web_domain" value="{{ cfg.web.web_domain }}" placeholder="rocketlogai.yourdomain.com" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm">
+                    </div>
+                </div>
+                <p class="text-[10px] text-amber-300 mt-2 ml-6">Requires a public domain pointing to this server and ports 80/443 accessible. Use certbot externally for best results and paste the resulting paths above.</p>
+                <p class="text-[10px] text-zinc-400 mt-1 ml-6">For full automated Let's Encrypt, run certbot on the host and point to the generated files.</p>
+            </div>
+
+            <div class="flex items-center gap-2 mt-4">
+                <input type="checkbox" name="force_https_redirect" {% if cfg.web.force_https_redirect %}checked{% endif %} class="accent-emerald-500">
+                <span class="text-sm">Redirect HTTP → HTTPS when both are enabled</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Local Auth -->
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4">Local Authentication</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs text-zinc-400">Local Username</label>
+                <input name="local_user" value="{{ cfg.web.local_user }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Local Password</label>
+                <input type="password" name="local_password" value="{{ cfg.web.local_password }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+        </div>
+        <p class="text-xs text-zinc-500 mt-2">Used as fallback when domain auth is disabled or fails. You can completely disable local login (force domain-only) using the toggle in the Domain section below; use the CLI <code>logsentinel enable-local-login</code> if you ever get locked out.</p>
+    </div>
+
+    <!-- Windows Domain / AD -->
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4 flex items-center gap-2">Windows Domain Authentication (Active Directory)</h2>
+        <div class="flex items-center gap-2 mb-4">
+            <input type="checkbox" name="domain_enabled" {% if cfg.web.domain_enabled %}checked{% endif %} class="accent-emerald-500">
+            <span class="text-sm">Enable domain login</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs text-zinc-400">Domain Controller / LDAP Server</label>
+                <input name="domain_server" value="{{ cfg.web.domain_server }}" placeholder="dc01.corp.local or ldap://dc01.corp.local" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Base DN</label>
+                <input name="domain_base_dn" value="{{ cfg.web.domain_base_dn }}" placeholder="DC=corp,DC=local" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">NetBIOS Domain (optional)</label>
+                <input name="domain_user_domain" value="{{ cfg.web.domain_user_domain }}" placeholder="CORP" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+            </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2 text-xs">
+            <input type="checkbox" name="domain_fallback_local" {% if cfg.web.domain_fallback_local %}checked{% endif %} class="accent-emerald-500">
+            <span>Allow local fallback if domain authentication fails</span>
+        </div>
+
+        <div class="mt-2 flex items-center gap-2 text-xs">
+            <input type="checkbox" name="allow_local_login" {% if cfg.web.allow_local_login %}checked{% endif %} class="accent-emerald-500">
+            <span>Allow local administrator login (recommended - disable only if you want to force domain-only and have safe CLI recovery)</span>
+        </div>
+
+        <!-- Domain Test -->
+        <div class="mt-5 pt-4 border-t border-zinc-800">
+            <button type="button" onclick="testDomainConnection()" 
+                    class="px-4 py-1.5 text-sm rounded-2xl border border-emerald-700 hover:bg-emerald-900/30 text-emerald-300">
+                Test Domain Connectivity
+            </button>
+            <span id="domain-test-result" class="ml-3 text-xs"></span>
+        </div>
+    </div>
+
+    <script>
+        async function testDomainConnection() {
+            const resultEl = document.getElementById('domain-test-result');
+            resultEl.textContent = 'Testing...';
+            resultEl.className = 'ml-3 text-xs text-yellow-400';
+
+            const formData = new FormData();
+            formData.append('domain_server', document.querySelector('[name="domain_server"]').value);
+            formData.append('domain_base_dn', document.querySelector('[name="domain_base_dn"]').value);
+
+            try {
+                const res = await fetch('/api/domain/test', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    resultEl.textContent = '✓ ' + data.message;
+                    resultEl.className = 'ml-3 text-xs text-emerald-400';
+                } else {
+                    resultEl.textContent = '✗ ' + data.message;
+                    resultEl.className = 'ml-3 text-xs text-red-400';
+                }
+            } catch (e) {
+                resultEl.textContent = '✗ Connection test failed';
+                resultEl.className = 'ml-3 text-xs text-red-400';
+            }
+        }
+    </script>
+
+    <script>
+        async function testLLMConnection() {
+            const statusEl = document.getElementById('llm-test-status') || document.createElement('div');
+            if (!document.getElementById('llm-test-status')) {
+                const llmSection = document.querySelector('[name="llm_base_url"]')?.closest('.lg\\:col-span-2') || document.body;
+                statusEl.id = 'llm-test-status';
+                llmSection.appendChild(statusEl);
+            }
+
+            let baseUrl = document.querySelector('[name="llm_base_url"]').value;
+            let apiKey = document.querySelector('[name="llm_api_key"]').value || 'not-needed';
+            let model = document.querySelector('[name="llm_model"]').value?.trim();
+
+            statusEl.textContent = 'Testing LLM connection...';
+            statusEl.className = 'text-xs mt-1 text-yellow-400';
+
+            try {
+                // Auto-detect model if none provided (the "auto sense" behavior)
+                if (!model) {
+                    statusEl.textContent = 'No model specified — detecting from server...';
+                    try {
+                        const modelsRes = await fetch('/api/llm/fetch-models', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ base_url: baseUrl, api_key: apiKey })
+                        });
+                        const modelsData = await modelsRes.json();
+
+                        if (modelsData.success && modelsData.models && modelsData.models.length > 0) {
+                            // Prefer non-embedding models
+                            let chosen = modelsData.models.find(m => 
+                                !/embed|embedding|text-embedding/i.test(m)
+                            ) || modelsData.models[0];
+
+                            model = chosen;
+                            // Auto-fill the input so it gets saved
+                            document.querySelector('[name="llm_model"]').value = model;
+                            statusEl.textContent = `Auto-detected model: ${model}. Testing...`;
+                        } else {
+                            statusEl.textContent = 'Could not auto-detect model. Testing basic connectivity...';
+                        }
+                    } catch (detectErr) {
+                        console.warn('Model auto-detect failed:', detectErr);
+                        statusEl.textContent = 'Auto-detect failed. Testing basic connectivity...';
+                    }
+                }
+
+                const azureEndpoint = document.querySelector('[name="llm_azure_endpoint"]')?.value || '';
+                const azureDeployment = document.querySelector('[name="llm_azure_deployment"]')?.value || '';
+                const azureApiVersion = document.querySelector('[name="llm_azure_api_version"]')?.value || '';
+
+                const res = await fetch('/api/llm/test-connection', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        base_url: baseUrl,
+                        api_key: apiKey,
+                        model: model || null,
+                        azure_endpoint: azureEndpoint,
+                        azure_deployment: azureDeployment,
+                        azure_api_version: azureApiVersion
+                    })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    let msg = '✅ ' + data.message;
+                    if (data.models_found) msg += ` (${data.models_found} models available)`;
+                    if (data.test_completion) msg += ' • completion OK';
+                    statusEl.textContent = msg;
+                    statusEl.className = 'text-xs mt-1 text-emerald-400';
+                } else {
+                    statusEl.textContent = '❌ ' + data.message;
+                    statusEl.className = 'text-xs mt-1 text-red-400';
+                }
+            } catch (e) {
+                statusEl.textContent = '❌ Failed to reach LLM server';
+                statusEl.className = 'text-xs mt-1 text-red-400';
+            }
+        }
+    </script>
+
+    <!-- Alerting -->
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="font-semibold mb-4">Alerting</h2>
+        
+        <div class="mb-4">
+            <label class="text-xs text-zinc-400 block mb-1">Webhook URLs (one per line)</label>
+            <textarea name="webhooks" rows="3" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl p-3 font-mono text-sm">{{ cfg.alerting.webhooks | join('
+') }}</textarea>
+        </div>
+
+        <div class="mb-4">
+            <label class="text-xs text-zinc-400 block mb-1">Email Recipients (one per line)</label>
+            <textarea name="email_to" rows="2" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl p-3 font-mono text-sm">{{ cfg.alerting.email_to | join('
+') }}</textarea>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs text-zinc-400">SMTP Host</label>
+                <input name="smtp_host" value="{{ cfg.alerting.smtp_host }}" placeholder="smtp.gmail.com" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">SMTP Port</label>
+                <input name="smtp_port" value="{{ cfg.alerting.smtp_port }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">SMTP Username</label>
+                <input name="smtp_user" value="{{ cfg.alerting.smtp_user }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">SMTP Password</label>
+                <input type="password" name="smtp_password" value="{{ cfg.alerting.smtp_password }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div class="md:col-span-2">
+                <label class="text-xs text-zinc-400">From Address</label>
+                <input name="smtp_from" value="{{ cfg.alerting.smtp_from }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+        </div>
+        <p class="text-xs text-zinc-500 mt-2">Supports generic webhooks + Microsoft Teams (auto-detected) and email alerts on high/critical threats.</p>
+    </div>
+
+    <!-- Rules - Flexible for any device -->
+    <div class="section-card rounded-3xl p-7">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="font-semibold text-xl">Rules (Custom Patterns)</h2>
+                <p class="text-xs text-zinc-400">Define regex rules that trigger immediate high-severity alerts for any device (firewalls, switches, servers, desktops, etc.).</p>
+            </div>
+        </div>
+
+        <div>
+            <label class="text-xs font-medium text-zinc-400 block mb-1.5">Custom Regex Patterns (one per line)</label>
+            <textarea name="custom_patterns" rows="5" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl p-3 font-mono text-sm" placeholder="Failed password.*from .*&#10;CRITICAL.*tamper&#10;.*sudo.*root">{{ (cfg.rules.custom_patterns or []) | join('
+') }}</textarea>
+        </div>
+        <p class="text-xs text-zinc-500 mt-2">These are evaluated with case-insensitive matching. High scoring matches will always create threats and can trigger alerts.</p>
+    </div>
+
+    <!-- Analysis Settings -->
+    <div class="section-card rounded-3xl p-7">
+        <h2 class="font-semibold text-xl mb-4">Analysis Engine</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="text-xs text-zinc-400">Analysis Interval (seconds)</label>
+                <input type="number" name="analysis_interval" value="{{ cfg.analysis.interval_seconds }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Batch Size</label>
+                <input type="number" name="analysis_batch_size" value="{{ cfg.analysis.batch_size }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Min Severity for AI</label>
+                <select name="min_severity_for_ai" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+                    <option value="low" {% if cfg.analysis.min_severity_for_ai == 'low' %}selected{% endif %}>low</option>
+                    <option value="medium" {% if cfg.analysis.min_severity_for_ai == 'medium' %}selected{% endif %}>medium</option>
+                    <option value="high" {% if cfg.analysis.min_severity_for_ai == 'high' %}selected{% endif %}>high</option>
+                    <option value="critical" {% if cfg.analysis.min_severity_for_ai == 'critical' %}selected{% endif %}>critical</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Heartbeats / Monitors global settings -->
+    <div class="section-card rounded-3xl p-7">
+        <h2 class="font-semibold text-xl mb-4">Heartbeats / Active Monitors (global)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" name="heartbeats_enabled" {% if cfg is defined and cfg.heartbeats is defined and cfg.heartbeats.enabled %}checked{% endif %} class="accent-emerald-500">
+                    <span>Enabled globally</span>
+                </label>
+                <p class="text-[10px] text-zinc-500 mt-1">Master switch for background monitor checks (pings, SSH banners, HTTP, scripts etc). Per-monitor 'enabled' flags still apply individually. Change takes effect on restart.</p>
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Default Interval (seconds)</label>
+                <input type="number" name="heartbeats_default_interval" value="{{ (cfg.heartbeats.default_interval_seconds if cfg is defined and cfg.heartbeats is defined else 60) }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2">
+                <p class="text-[10px] text-zinc-500 mt-1">Fallback interval. Override per-monitor in the Monitors page (e.g. 60 for pings, 43200 for daily SSH checks).</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex gap-3">
+        <button type="submit" class="px-8 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold">Save Configuration</button>
+        <a href="/" class="px-8 py-3 rounded-2xl border border-zinc-700 hover:bg-zinc-900 flex items-center">Cancel</a>
+    </div>
+
+    <!-- Branding / White Label -->
+    <div class="mt-8 p-5 rounded-3xl border border-zinc-700 bg-zinc-950/50">
+        <div class="font-semibold mb-2 flex items-center gap-2">🏷️ Branding (White Label)</div>
+        <div class="text-sm text-zinc-400 mb-3">Set a custom instance name. "Powered by RocketLogAI (AnythingIP)" stays visible.</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs text-zinc-400">Instance Name</label>
+                <input name="branding_instance_name" value="{{ (cfg.branding.instance_name if cfg.branding else '') or '' }}" placeholder="Acme SOC" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Logo filename (in data/branding/)</label>
+                <input name="branding_logo_path" value="{{ (cfg.branding.logo_path if cfg.branding else '') or '' }}" placeholder="logo.png" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart Section -->
+    <div class="mt-4 p-5 rounded-3xl border border-amber-700 bg-amber-950/30">
+        <div class="font-semibold text-amber-400 mb-2">Restart Required</div>
+        <p class="text-sm text-amber-300 mb-3">LLM server, Web listening, and SSL changes require a restart of RocketLogAI.</p>
+        <button onclick="if(confirm('This will stop the current process. You will need to start RocketLogAI again manually.')) { 
+            document.getElementById('restart-status').textContent = 'Shutting down...'; 
+            fetch('/api/restart', {method: 'POST'}).finally(() => location.reload()); 
+        }" class="px-5 py-2 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium">
+            Restart RocketLogAI Now
+        </button>
+        <span id="restart-status" class="ml-3 text-sm text-amber-300"></span>
+    </div>
+</form>
+
+<div class="mt-6 text-xs text-zinc-500">
+    Note: Changes to LLM server or Web Server settings usually require restarting RocketLogAI.
+</div>
+
+<!-- API Tokens Management -->
+<div id="api-tokens">
+<div class="mt-8 section-card rounded-3xl p-6">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h3 class="text-xl font-semibold flex items-center gap-2">
+                <span>🔑</span> API Tokens
+            </h3>
+            <p class="text-sm text-zinc-400 mt-1">Create long-lived tokens so scripts, agents, or other tools can securely call RocketLogAI APIs (like Home Assistant long-lived tokens).</p>
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <button onclick="createApiToken()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">+ Create New Token</button>
+    </div>
+
+    <div id="api-tokens-list" class="space-y-2 text-sm">
+        <div class="text-zinc-500">Loading tokens...</div>
+    </div>
+
+    <div id="new-token-display" class="hidden mt-4 p-4 bg-emerald-950 border border-emerald-800 rounded-2xl">
+        <div class="font-semibold text-emerald-400 mb-1">Token created! Copy it now — you won't see it again.</div>
+        <div class="flex items-center gap-2">
+            <input id="new-token-value" readonly class="flex-1 font-mono bg-black border border-emerald-700 rounded-xl px-3 py-2 text-sm">
+            <button onclick="copyNewToken()" class="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-sm">Copy</button>
+        </div>
+        <div class="text-[10px] text-emerald-300 mt-2">Use it as: <code>Authorization: Bearer rla_...</code> on any /api/* endpoint.</div>
+    </div>
+</div>
+
+<script>
+async function loadApiTokens() {
+    const container = document.getElementById('api-tokens-list');
+    try {
+        const res = await fetch('/api/api-tokens');
+        const data = await res.json();
+        if (!data.tokens || data.tokens.length === 0) {
+            container.innerHTML = '<div class="text-zinc-500 text-sm">No API tokens yet. Create one above to let external scripts or agents talk to RocketLogAI.</div>';
+            return;
+        }
+        container.innerHTML = data.tokens.map(t => `
+            <div class="flex justify-between items-center bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3">
+                <div>
+                    <div class="font-medium">${t.name}</div>
+                    <div class="text-xs text-zinc-500">${t.prefix}... • ${t.scopes} • created ${t.created_at ? t.created_at.slice(0,16) : ''}</div>
+                    ${t.last_used_at ? `<div class="text-[10px] text-emerald-400">Last used: ${t.last_used_at.slice(0,16)}</div>` : ''}
+                </div>
+                <button onclick="revokeApiToken(${t.id}, this)" class="text-xs px-3 py-1 rounded-lg bg-red-900/60 hover:bg-red-800 text-red-300">Revoke</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<div class="text-red-400 text-sm">Failed to load tokens</div>';
+    }
+}
+
+async function createApiToken() {
+    const name = prompt('Token name (e.g. "Home Assistant Automation" or "External Script"):', 'New Integration');
+    if (!name) return;
+
+    const res = await fetch('/api/api-tokens', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name, scopes: 'full', notes: '' })
+    });
+    const data = await res.json();
+    if (data.success && data.token) {
+        const display = document.getElementById('new-token-display');
+        const input = document.getElementById('new-token-value');
+        input.value = data.token.token;
+        display.classList.remove('hidden');
+        loadApiTokens();
+        // Scroll to it
+        display.scrollIntoView({ behavior: 'smooth' });
+    } else {
+        alert('Failed to create token: ' + (data.error || 'Unknown error'));
+    }
+}
+
+function copyNewToken() {
+    const input = document.getElementById('new-token-value');
+    navigator.clipboard.writeText(input.value).then(() => {
+        const orig = input.value;
+        input.value = 'Copied!';
+        setTimeout(() => { input.value = orig; }, 1500);
+    });
+}
+
+async function revokeApiToken(id, btn) {
+    if (!confirm('Revoke this API token? Any scripts using it will stop working.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Revoking...';
+    const res = await fetch('/api/api-tokens/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+        loadApiTokens();
+    } else {
+        alert('Failed to revoke');
+        btn.disabled = false;
+        btn.textContent = 'Revoke';
+    }
+}
+
+// Auto-load tokens when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    const tokensSection = document.getElementById('api-tokens-list');
+    if (tokensSection) loadApiTokens();
+});
+</script>
+</script>
+{% endblock %}

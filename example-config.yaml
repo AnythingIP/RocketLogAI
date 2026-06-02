@@ -1,0 +1,338 @@
+# RocketLogAI (AnythingIP) Example Configuration
+# Copy this to config.yaml and customize.
+# The program will look for config.yaml in the current directory by default.
+
+syslog:
+  # Listeners - you can have multiple
+  listen:
+    - protocol: udp
+      host: "0.0.0.0"
+      port: 5140          # Use 514 for real syslog (requires root / privileges)
+    - protocol: tcp
+      host: "0.0.0.0"
+      port: 5140
+
+  # Common sources that work great with RocketLogAI:
+  # - Network gear (switches, routers, firewalls, APs) via their built-in syslog forwarding
+  # - Linux servers: *.* @your-rocketlogai-ip:5140   (rsyslog / syslog-ng)
+  # - Windows: use NXLog, Snare, or Winlogbeat → syslog
+  # - Home Assistant: use the "Syslog" addon (https://github.com/mib1185/ha-addon-syslog)
+  #     Point it at this host:5140 (udp). Captures core + ALL addon logs (sensors, zigbee, zwave, mqtt, etc.)
+  #     See README.md and docs/USAGE.md for the exact addon config + notes on sensor events.
+
+  max_message_size: 8192
+  buffer_size: 10000
+
+storage:
+  db_path: "./data/logsentinel.db"
+  retention_days: 30
+
+llm:
+  # --- Local servers (recommended for privacy) ---
+  # LM Studio (OpenAI compat):   "http://localhost:1234/v1"
+  # Ollama (enable OpenAI compat): "http://localhost:11434/v1"
+  # vLLM or other: point at its /v1 endpoint
+  base_url: "http://localhost:1234/v1"
+  api_key: "lm-studio"   # ignored by most local servers; "ollama" also fine
+  # Leave model empty to use the model currently loaded in the server
+  model: ""
+  timeout: 180
+  max_tokens: 1200
+  temperature: 0.1
+  # How to ask for structured JSON from the model.
+  # "auto" (recommended): try json_schema, fall back gracefully if the server rejects it.
+  # "json_schema": best quality when supported (Qwen2.5, recent Llama, etc.)
+  # "json_object", "text", or "none": for older/quirky local servers (LM Studio, Ollama, etc.)
+  response_format: "auto"
+  provider: "local"   # "local" for LM Studio, Ollama, vLLM etc. (OpenAI-compatible)
+  # Multi-LLM example (priority order, first wins; failover on error/timeout/busy):
+  # servers:
+  #   - provider: local
+  #     base_url: http://localhost:11434/v1
+  #     api_key: ollama
+  #     enabled: true
+  #   - provider: local
+  #     base_url: http://192.168.1.50:1234/v1
+  #     api_key: lm-studio
+  #     enabled: true
+
+analysis:
+  enabled: true
+  interval_seconds: 45
+  batch_size: 25
+  # Only send logs at or above this severity to the LLM for deeper analysis
+  min_severity_for_ai: "medium"
+  context_window: 80
+
+rules:
+  enabled: true
+  custom_patterns:
+    # Add your own regexes here.
+    # Prefix with low:/medium:/high:/critical: to control severity (plain = high for backward compat).
+    # Use "low:" or "medium:" for known noise to prevent cluttering LLM analysis / threats.
+    # Examples:
+    # - "high:Failed password for .* from .* port"
+    #
+    # Home Assistant addon noise reduction (very common once you forward HA logs):
+    # - "low:homeassistant/addon.*(UPS|nut).*(reconnect|not connected|driver|warning)"
+    # - "low:homeassistant/addon.*(info|status|started|restarting|success)"
+    # - "medium:homeassistant.*(sensor|binary_sensor).* (unavailable|unknown)"
+    # - "low:supervisor.*(addon|core).* (update|restart|info)"
+    # These keep the logs in the system (for search/AI assistant) but stop them from triggering
+    # high-severity threats or always going to the LLM unless the original syslog severity was high.
+
+alerting:
+  console: true
+  webhooks: []
+  # Minimum severity that triggers an alert (low/medium/high/critical)
+  min_severity: "medium"
+
+remediation:
+  # DANGEROUS: Automated remediation is disabled by default and should stay that way
+  # until you have thoroughly tested and understand the risks.
+  enabled: false
+  dry_run: true
+  require_confirmation: true
+  allowed_actions: []
+
+# =============================================================================
+# FULLY OFFLINE GEOLOCATION (no internet required at runtime)
+# =============================================================================
+geo:
+  enabled: true
+  merge_strategy: "first_success"   # first_success | aggregate
+
+  # === Multi-source geo (recommended) ===
+  # You can combine free + paid services. Lower priority = tried first.
+  providers:
+    - type: "maxmind"
+      path: ""                    # auto-detect or explicit .mmdb
+      priority: 10
+    # Example paid/high-quality sources (uncomment and add your keys)
+    # - type: "ipinfo"
+    #   token: "YOUR_IPINFO_TOKEN"
+    #   priority: 20
+    # - type: "ipapi"
+    #   priority: 30
+
+    # Any other paid service via generic HTTP (see geo.py GenericHTTPGeoProvider for mapping)
+    # - type: "generic_http"
+    #   url_template: "https://api.yourprovider.com/{ip}?apikey=YOURKEY"
+    #   response_mapping: { country: "data.country", city: "data.city", lat: "data.lat", lon: "data.lon" }
+    #   priority: 15
+
+  # Legacy single MaxMind path (still fully supported)
+  mmdb_path: ""
+
+# =============================================================================
+# IP BLACKLIST / REPUTATION (external threats)
+# =============================================================================
+blacklist:
+  enabled: true
+  hit_severity: "high"
+  escalate_on_hit: true
+  providers:
+    # Free public lists (downloaded daily)
+    - name: "firehol_level1"
+      enabled: true
+      url: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
+    - name: "blocklist_de"
+      enabled: true
+      url: "https://lists.blocklist.de/lists/all.txt"
+    # Example paid / API-based (uncomment and add key)
+    # - name: "abuseipdb"
+    #   enabled: false
+    #   url: "https://api.abuseipdb.com/api/v2/blacklist"
+    #   api_key: "YOUR_ABUSEIPDB_KEY"
+
+# =============================================================================
+# MAC VENDOR / DEVICE IDENTIFICATION (NEW)
+# =============================================================================
+# RocketLogAI automatically downloads the official IEEE OUI database on startup
+# to identify the manufacturer from MAC addresses (Apple, Samsung, TP-Link, etc.).
+# This helps the AI understand what kind of device it's looking at and whether
+# the traffic looks "normal" for that manufacturer.
+#
+# No configuration is usually needed — it works automatically.
+# The data is cached in data/mac_vendors/ and refreshed weekly.
+
+# =============================================================================
+# DEEP HOME ASSISTANT INTEGRATION (the good stuff)
+# =============================================================================
+home_assistant:
+  enabled: false
+  url: "http://homeassistant.local:8123"
+  token: "YOUR_LONG_LIVED_ACCESS_TOKEN_HERE"   # Settings → Devices & Services → Your profile → Create Token
+  verify_ssl: true
+
+  # Automatically attach "this IP belongs to my Philips Hue bridge" style context to threats
+  auto_enrich: true
+
+  # When a threat reaches one of these statuses, automatically do the big HA alert
+  trigger_on_statuses:
+    - verified_threat
+
+  # Mobile / chat notifications when a serious threat is confirmed
+  notify_services:
+    # - notify.mobile_app_your_phone
+    # - notify.telegram_chat
+
+  # Event name you can listen to in HA automations
+  custom_event: "logsentinel.major_threat"
+
+  # Maintain live sensors in HA (open threats count, last threat, etc.)
+  create_sensors: true
+
+# =============================================================================
+# HEARTBEAT / DEEP SERVICE MONITORING
+# =============================================================================
+# Actively checks your important servers and services.
+# Failures and outdated versions become normal threats (so you get LLM analysis,
+# alerts, Home Assistant notifications, etc. in one place).
+heartbeats:
+  enabled: false
+  default_interval_seconds: 60   # pings / basic TCP: 60s; override per-monitor below
+
+  monitors:
+    # Example 1: Simple TCP reachability (fast)
+    - name: "primary-ssh"
+      host: "10.0.0.5"
+      type: "tcp"
+      port: 22
+      severity: "high"
+      interval_seconds: 60
+
+    # Example 2: HTTP - verify correct site + version string is present
+    - name: "web-frontend"
+      host: "10.0.0.10"
+      type: "http"
+      port: 443
+      path: "/"
+      expected: "MyApp v2.8"          # Must appear in body or headers
+      severity: "critical"
+      interval_seconds: 300
+
+    # Example 3: SSH version check - run infrequently (1-2x per day)
+    - name: "bastion-ssh"
+      host: "10.0.0.5"
+      type: "ssh_version"
+      port: 22
+      expected: "OpenSSH_9.6"
+      severity: "high"
+      interval_seconds: 43200   # 12 hours
+      remediation_action: "update_ssh"
+
+    # Example 3: SSH version check + automatic remediation suggestion
+    - name: "bastion-ssh"
+      host: "10.0.0.5"
+      type: "ssh_version"
+      port: 22
+      expected: "OpenSSH_9.6"         # or just "9.6"
+      severity: "high"
+      remediation_action: "update_ssh"   # Will be offered in the UI / remediation flow
+
+    # More realistic examples to generate rich Server Activity data (and test iBMi/Windows paths)
+    - name: "local-gateway"
+      host: "192.168.20.1"
+      type: "tcp"
+      port: 80
+      severity: "medium"
+      interval_seconds: 120
+
+    - name: "dns-primary"
+      host: "8.8.8.8"
+      type: "tcp"
+      port: 53
+      severity: "high"
+
+    - name: "example-ibmi"
+      host: "10.0.0.50"
+      type: "ibmi_ssh"                 # or ibmi_5250 for classic
+      port: 22
+      credential_profile: "QSECOFR Read-Only"   # create this in UI first
+      interval_seconds: 300
+      remediation_action: "ibmi_daily_health.cl"
+      notes: "Legacy greenscreen automation target - menu tasks from old programs"
+
+    - name: "win-dc01"
+      host: "192.168.20.10"
+      type: "windows_wmi"
+      credential_profile: "Domain Monitor"
+      interval_seconds: 180
+      params:
+        wmi_classes: ["Win32_NTLogEvent"]
+        log_files: ["Security", "System"]
+      notes: "Windows Event Log pull for AI analysis (agentless)"
+
+    # Your Linux box (192.168.20.149) - SSH using a local user from your local_auth list
+    - name: "linux-149"
+      host: "192.168.20.149"
+      type: "ssh_version"
+      port: 22
+      credential_username: "zroo"   # or the exact local user from your list (admin, zroo, etc.)
+      severity: "medium"
+      interval_seconds: 120
+      notes: "Your main Linux test box - will generate good activity + allow remote scripts"
+
+    - name: "local-web"
+      host: "192.168.20.134"
+      type: "http"
+      port: 8787
+      path: "/"
+      expected: "RocketLogAI"
+      severity: "low"
+      interval_seconds: 300
+
+
+# =============================================================================
+# LLM PROVIDER (local default + Microsoft 365 Copilot / Azure OpenAI support)
+# =============================================================================
+# llm:
+#   provider: "local"                 # "local" for LM Studio / Ollama / vLLM (OpenAI compat). Use cloud ones below for real APIs.
+#   base_url: "http://localhost:1234/v1"   # LM Studio; for Ollama use "http://localhost:11434/v1"
+#   api_key: "lm-studio"                   # or "ollama"
+#   model: ""
+#   # For Microsoft 365 Copilot or corporate Azure OpenAI:
+#   # provider: "microsoft_365_copilot"   # or "azure"
+#   # azure_endpoint: "https://YOUR-RESOURCE.openai.azure.com/"
+#   # azure_deployment: "gpt-4o"
+#   # api_key: "YOUR_AZURE_KEY"
+#   # azure_api_version: "2024-10-21"
+
+# =============================================================================
+# WHITE-LABEL BRANDING (instance name + optional logo)
+# =============================================================================
+# branding:
+#   instance_name: "Acme Corp Security"   # Shows in sidebar, header, page titles
+#   logo_path: "data/branding/logo.png"   # Optional; served at /branding/ if present
+#   show_powered_by: true                 # Keeps visible "powered by RocketLogAI (AnythingIP)" attribution
+
+# =============================================================================
+# API TOKENS (for external scripts, agents, HA callbacks, "cool things like you")
+# =============================================================================
+# Create via the /config page UI (or future CLI). Tokens are prefixed rla_ and shown only once.
+# Use as: Authorization: Bearer rla_xxxxxxxxxxxxxxxx
+# Scopes: "full" (default) or comma-separated subsets.
+# Example uses: custom Python agents, Omada/UniFi addons, external dashboards, HA REST commands.
+# All /api/* endpoints accept either session cookie (web UI) or valid Bearer rla_ token.
+
+# =============================================================================
+# END OF EXAMPLE CONFIG
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# NEW IN THIS RELEASE - Quick reference
+# -----------------------------------------------------------------------------
+# /activity page in the UI now shows a live dashboard of:
+#   - Every inbound log source (syslog, future WMI/5250 pulls)
+#   - Every outbound action (HA notifications, SSH remediation, 5250 CL execution, monitor checks)
+#
+# New data_sources: section above lets you configure multiple agent-less methods.
+# New credential types supported: windows_wmi, ibmi_5250, ibmi_ssh
+#
+# IBM i prebuilts live in data/remediation_scripts/prebuilts/ibmi_*.cl
+# (daily health, jobs, users, storage, security audit — all classic QSECOFR tasks)
+#
+# Secure TLS syslog listener code is in place (port 6514 with your existing certs).
+# Full Windows WMI + 5250 interactive drivers are foundation-ready for the next round.
+# -----------------------------------------------------------------------------

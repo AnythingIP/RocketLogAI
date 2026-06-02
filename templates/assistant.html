@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI Assistant{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-4xl font-semibold tracking-tighter">RocketLogAI Assistant</h1>
+        <p class="text-zinc-400 mt-2">Ask anything about using RocketLogAI — configuration, iBMi automation, monitors, geo sources, M365 Copilot, activity dashboard, etc.</p>
+    </div>
+
+    <!-- Chat / Ask Section -->
+    <div class="section-card rounded-3xl p-6 mb-8">
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-2">Ask the Assistant</label>
+            <div class="flex gap-2">
+                <input id="assistant-question" type="text" placeholder="How do I set up Microsoft 365 Copilot?" 
+                       class="flex-1 bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm"
+                       onkeydown="if (event.key === 'Enter') askAssistant()">
+                <button onclick="askAssistant()" 
+                        class="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
+                    Ask
+                </button>
+            </div>
+        </div>
+
+        <div id="assistant-answer" class="hidden mt-4 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-sm whitespace-pre-wrap"></div>
+
+        <!-- Suggest Feature Section (shown after answer or manually) -->
+        <div id="suggest-section" class="hidden mt-6 pt-6 border-t border-zinc-800">
+            <div class="text-sm font-medium mb-2 text-purple-400">The assistant didn't fully answer your question?</div>
+            <textarea id="suggestion-text" rows="3" placeholder="Describe the missing feature or improvement you'd like..." 
+                      class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm"></textarea>
+            <div class="flex gap-2 mt-2">
+                <button onclick="submitSuggestion()" 
+                        class="px-5 py-2 rounded-2xl bg-purple-700 hover:bg-purple-600 text-white text-sm">
+                    Submit Suggestion (admins will review)
+                </button>
+                <button onclick="document.getElementById('suggest-section').classList.add('hidden')" 
+                        class="px-4 py-2 rounded-2xl border border-zinc-700 text-sm">
+                    Cancel
+                </button>
+            </div>
+            <div class="text-[10px] text-zinc-500 mt-1">Only admins can see and review suggestions.</div>
+        </div>
+    </div>
+
+    <!-- Admin Review Section -->
+    {% if is_admin %}
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-xl font-semibold">Review Suggestions <span class="text-xs text-purple-400">(Admin only)</span></h2>
+            </div>
+            <button onclick="loadSuggestions()" 
+                    class="text-xs px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">
+                Refresh
+            </button>
+        </div>
+
+        <div id="suggestions-list" class="space-y-3 text-sm">
+            <div class="text-zinc-500 text-xs">Loading suggestions...</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function askAssistant() {
+    const input = document.getElementById('assistant-question');
+    const answerBox = document.getElementById('assistant-answer');
+    const suggestSection = document.getElementById('suggest-section');
+
+    const question = input.value.trim();
+    if (!question) return;
+
+    answerBox.classList.remove('hidden');
+    answerBox.textContent = 'Thinking...';
+    suggestSection.classList.add('hidden');
+
+    try {
+        const res = await fetch('/api/assistant/ask', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ question })
+        });
+        const data = await res.json();
+
+        answerBox.textContent = data.answer || 'No response.';
+        suggestSection.classList.remove('hidden');
+        // Pre-fill suggestion with the question if user wants to suggest
+        document.getElementById('suggestion-text').value = 
+            `Question the assistant couldn't answer well: "${question}"\n\nSuggested improvement:`;
+    } catch (e) {
+        answerBox.textContent = 'Error contacting assistant. You can still submit a suggestion below.';
+        suggestSection.classList.remove('hidden');
+    }
+}
+
+async function submitSuggestion() {
+    const question = document.getElementById('assistant-question').value.trim();
+    const suggestion = document.getElementById('suggestion-text').value.trim();
+
+    if (!suggestion) {
+        alert("Please enter a suggestion.");
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/assistant/suggest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ question, suggestion })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            alert(data.message || "Suggestion submitted. Thank you!");
+            document.getElementById('suggest-section').classList.add('hidden');
+            document.getElementById('suggestion-text').value = '';
+        } else {
+            alert("Failed to submit: " + (data.error || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Error submitting suggestion.");
+    }
+}
+
+async function loadSuggestions() {
+    const container = document.getElementById('suggestions-list');
+    container.innerHTML = '<div class="text-zinc-500 text-xs">Loading...</div>';
+
+    try {
+        const res = await fetch('/api/assistant/suggestions');
+        const data = await res.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="text-red-400 text-sm">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.suggestions || data.suggestions.length === 0) {
+            container.innerHTML = '<div class="text-zinc-500 text-sm">No suggestions yet.</div>';
+            return;
+        }
+
+        let html = '';
+        data.suggestions.forEach(s => {
+            html += `
+                <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
+                    <div class="flex justify-between text-xs text-zinc-400 mb-2">
+                        <div><strong>${s.username}</strong> • ${s.created_at ? s.created_at.substring(0,16) : ''}</div>
+                        <div class="font-mono">${s.status}</div>
+                    </div>
+                    <div class="text-sm mb-1"><strong>Q:</strong> ${s.question || ''}</div>
+                    ${s.suggestion ? `<div class="text-sm mb-2"><strong>Suggestion:</strong> ${s.suggestion}</div>` : ''}
+                    ${s.ai_answer ? `<div class="text-xs text-zinc-400 mb-2">AI answered: ${s.ai_answer.substring(0,200)}...</div>` : ''}
+                    
+                    <div class="flex gap-2 mt-3">
+                        <select onchange="reviewSuggestion(${s.id}, this.value)" class="text-xs bg-zinc-900 border border-zinc-700 rounded px-2 py-1">
+                            <option value="">Change status...</option>
+                            <option value="reviewed">Reviewed</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="implemented">Implemented</option>
+                        </select>
+                        <input type="text" placeholder="Notes (optional)" id="notes-${s.id}" 
+                               class="text-xs bg-zinc-900 border border-zinc-700 rounded px-2 flex-1">
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<div class="text-red-400">Failed to load suggestions.</div>';
+    }
+}
+
+async function reviewSuggestion(id, newStatus) {
+    if (!newStatus) return;
+
+    const notesInput = document.getElementById(`notes-${id}`);
+    const notes = notesInput ? notesInput.value.trim() : null;
+
+    try {
+        const res = await fetch(`/api/assistant/suggestions/${id}/review`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ status: newStatus, notes })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            loadSuggestions(); // refresh
+        } else {
+            alert("Review failed: " + (data.error || "Unknown"));
+        }
+    } catch (e) {
+        alert("Error submitting review.");
+    }
+}
+
+// Auto-load suggestions for admins on page load
+document.addEventListener('DOMContentLoaded', () => {
+    const suggestionsContainer = document.getElementById('suggestions-list');
+    if (suggestionsContainer) {
+        loadSuggestions();
+    }
+});
+</script>
+{% endblock %}

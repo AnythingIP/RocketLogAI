@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RocketLogAI{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        
+        :root {
+            --bg: #0a0a0c;
+        }
+        
+        body { 
+            font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; 
+            background: #0a0a0c;
+        }
+        
+        .font-display {
+            font-family: 'Space Grotesk', 'Inter', sans-serif;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        .glass {
+            background: rgba(255,255,255,0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .section-card {
+            background: #111113;
+            border: 1px solid #27272a;
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+                       box-shadow 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+        
+        .section-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+        }
+
+        .threat-card {
+            transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+        
+        .threat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.2);
+        }
+
+        .status-pill {
+            font-size: 10px;
+            padding: 1px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .log-line { font-family: ui-monospace, monospace; font-size: 0.8rem; }
+        pre { white-space: pre-wrap; word-break: break-word; }
+        
+        .htmx-indicator { display: none; }
+        .htmx-request .htmx-indicator { display: inline; }
+
+        .nav-active {
+            color: #a1a1aa;
+            background: rgba(255,255,255,0.06);
+            border-radius: 6px;
+            padding: 2px 10px;
+        }
+
+        .chart-container {
+            position: relative;
+        }
+
+        .severity-critical { color: #f87171; }
+        .severity-high { color: #fb923c; }
+        .severity-medium { color: #fbbf24; }
+        .severity-low { color: #4ade80; }
+
+        .glow-emerald {
+            box-shadow: 0 0 15px -3px rgb(52 211 153 / 0.15);
+        }
+
+        /* iPhone + mobile polish */
+        @media (max-width: 767px) {
+            .section-card { border-radius: 1.25rem; }
+            table { font-size: 0.8rem; }
+            .text-xs { font-size: 0.65rem; line-height: 1rem; }
+            .py-3 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+            .px-4 { padding-left: 0.75rem; padding-right: 0.75rem; }
+            /* Larger tap targets */
+            button, a.button-ish { min-height: 2.5rem; }
+            #device-table td, #device-table th { padding-left: 0.5rem; padding-right: 0.5rem; }
+        }
+        /* Prevent iOS zoom on inputs */
+        @media (max-width: 767px) {
+            input, select, textarea { font-size: 16px !important; }
+        }
+    </style>
+</head>
+<body class="bg-[#0a0a0c] text-zinc-200">
+    <!-- Mobile Top Bar (iPhone + small screens) -->
+    <div class="md:hidden fixed top-0 left-0 right-0 z-[60] bg-[#0f0f11] border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            {% if cfg and cfg.branding and cfg.branding.logo_path %}
+                <img src="/static/branding/{{ cfg.branding.logo_path }}" class="w-8 h-8 object-contain" alt="logo">
+            {% else %}
+                <div class="w-8 h-8 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-black font-bold text-xl">R</div>
+            {% endif %}
+            <div>
+                <span class="font-display text-lg tracking-tighter font-semibold">{{ cfg.branding.instance_name if cfg and cfg.branding and cfg.branding.instance_name else 'RocketLogAI' }}</span>
+            </div>
+        </div>
+        <button id="mobile-menu-btn" onclick="toggleMobileDrawer()" class="p-2 -mr-2 text-zinc-300 hover:text-white active:bg-zinc-800 rounded-xl" aria-label="Open menu">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.25" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Sidebar (desktop fixed + mobile drawer) -->
+    <aside id="sidebar" class="fixed left-0 top-0 h-screen w-72 md:w-64 bg-[#0f0f11] border-r border-zinc-800 flex flex-col z-[70] transition-all duration-200 -translate-x-full md:translate-x-0 md:left-0">
+        <!-- Sidebar Header -->
+        <div class="flex items-center justify-between px-4 py-4 border-b border-zinc-800">
+            <div class="flex items-center gap-3">
+                {% if cfg and cfg.branding and cfg.branding.logo_path %}
+                    <img src="/static/branding/{{ cfg.branding.logo_path }}" class="w-9 h-9 object-contain flex-shrink-0" alt="logo">
+                {% else %}
+                    <div class="w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-black font-bold text-2xl shadow-inner flex-shrink-0">R</div>
+                {% endif %}
+                <div class="sidebar-text">
+                    <span class="font-display text-xl tracking-tighter font-semibold">{{ cfg.branding.instance_name if cfg and cfg.branding and cfg.branding.instance_name else 'RocketLogAI' }}</span>
+                    {% if not (cfg and cfg.branding and cfg.branding.instance_name) %}
+                    <div class="text-[10px] text-emerald-400">by AnythingIP</div>
+                    {% endif %}
+                </div>
+            </div>
+            <button onclick="toggleSidebar()" class="text-zinc-400 hover:text-white p-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="flex-1 overflow-y-auto py-4 text-sm">
+            <a href="/" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path == '/' %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">📊</span> <span class="sidebar-text">Dashboard</span>
+            </a>
+            <a href="/threats" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/threats') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">⚠️</span> <span class="sidebar-text">Threats</span>
+            </a>
+            <a href="/analyses" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/analyses') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">🧠</span> <span class="sidebar-text">AI Analyses</span>
+            </a>
+            <a href="/monitors" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/monitors') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">❤️</span> <span class="sidebar-text">Monitors</span>
+            </a>
+            <a href="/activity" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/activity') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">📡</span> <span class="sidebar-text">Server Activity</span>
+            </a>
+            <a href="/daily" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/daily') %}bg-emerald-900/60 text-emerald-300{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">📅</span> <span class="sidebar-text">Daily Briefing</span>
+            </a>
+            <a href="/assistant" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/assistant') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">🤖</span> <span class="sidebar-text">AI Assistant</span>
+            </a>
+            <a href="/logs" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/logs') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">📜</span> <span class="sidebar-text">Server Logs</span>
+            </a>
+            <a href="/devices" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/devices') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">📱</span> <span class="sidebar-text">Devices</span>
+            </a>
+            <a href="/maps" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/maps') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">🌍</span> <span class="sidebar-text">Maps</span>
+            </a>
+            <a href="/integrations" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-emerald-900/30 transition-all {% if request.url.path.startswith('/integrations') %}bg-emerald-900/60 text-emerald-300{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">🔌</span> <span class="sidebar-text">Integrations</span>
+            </a>
+            <a href="/config" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-emerald-900/30 transition-all {% if request.url.path.startswith('/config') %}bg-emerald-900/60 text-emerald-300{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">⚙️</span> <span class="sidebar-text">Config</span>
+            </a>
+            <a href="/automation" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-emerald-900/30 transition-all {% if request.url.path.startswith('/automation') %}bg-emerald-900/60 text-emerald-300{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">⚡</span> <span class="sidebar-text">Automation Rules</span>
+            </a>
+            <a href="/users" class="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-2xl hover:bg-zinc-900 transition-all {% if request.url.path.startswith('/users') %}bg-zinc-900 text-white{% else %}text-zinc-300{% endif %}">
+                <span class="w-5">👤</span> <span class="sidebar-text">Users</span>
+            </a>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="p-4 border-t border-zinc-800 text-[10px] text-zinc-500 sidebar-text">
+            AnythingIP • RocketLogAI v1.0-beta — Local only • Your data stays here
+        </div>
+    </aside>
+
+    <!-- Top Bar (desktop only - hidden on mobile) -->
+    <div class="hidden md:block fixed top-0 right-0 left-64 bg-[#0f0f11] border-b border-zinc-800 px-6 py-3 flex items-center justify-between text-sm z-40 transition-all" id="topbar">
+        <div class="flex-1"></div>
+
+        <div class="flex items-center gap-3 text-xs">
+            <div class="flex items-center gap-1.5 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
+                <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span class="text-emerald-400 font-semibold">Live</span>
+            </div>
+
+            {% if config and config.llm %}
+            <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-700 text-[10px]">
+                <span class="text-zinc-400">Powered by</span>
+                <span class="font-semibold text-emerald-300">{{ config.llm.provider | default('local') | title }}</span>
+                {% if config.llm.model %}
+                <span class="text-zinc-500 font-mono">({{ config.llm.model }})</span>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <span id="last-updated" class="text-zinc-500 tabular-nums">Updated just now</span>
+            {% if config %}
+            <span class="text-zinc-600 font-mono text-[10px] max-w-[180px] truncate">{{ config.storage.db_path }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Mobile status bar spacer (for the mobile header height) -->
+    <div class="md:hidden h-14"></div>
+
+    <!-- Main Content -->
+    <div class="md:ml-64 pt-0 md:pt-14 transition-all" id="main-content">
+        <div class="max-w-7xl mx-auto p-4 md:p-6">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Mobile Drawer Overlay -->
+    <div id="mobile-overlay" onclick="closeMobileDrawer()" class="hidden md:hidden fixed inset-0 bg-black/60 z-[65]"></div>
+
+<script>
+function toggleSidebar() {
+    // Desktop collapse only
+    const sidebar = document.getElementById('sidebar');
+    const main = document.getElementById('main-content');
+    const topbar = document.getElementById('topbar');
+    if (!sidebar || window.innerWidth < 768) return;
+
+    const isCollapsed = sidebar.classList.contains('w-16');
+
+    if (isCollapsed) {
+        sidebar.classList.remove('w-16');
+        sidebar.classList.add('w-64');
+        main.classList.remove('ml-16');
+        main.classList.add('ml-64');
+        if (topbar) { topbar.classList.remove('left-16'); topbar.classList.add('left-64'); }
+        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.remove('hidden'));
+    } else {
+        sidebar.classList.remove('w-64');
+        sidebar.classList.add('w-16');
+        main.classList.remove('ml-64');
+        main.classList.add('ml-16');
+        if (topbar) { topbar.classList.remove('left-64'); topbar.classList.add('left-16'); }
+        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.add('hidden'));
+    }
+    localStorage.setItem('sidebarCollapsed', !isCollapsed);
+}
+
+function toggleMobileDrawer() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    if (!sidebar || !overlay) return;
+
+    const isOpen = !sidebar.classList.contains('-translate-x-full');
+    if (isOpen) {
+        closeMobileDrawer();
+    } else {
+        sidebar.classList.remove('-translate-x-full');
+        sidebar.classList.add('translate-x-0');
+        overlay.classList.remove('hidden');
+        overlay.classList.add('block');
+        // prevent body scroll while drawer open
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeMobileDrawer() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    if (!sidebar || !overlay) return;
+    sidebar.classList.add('-translate-x-full');
+    sidebar.classList.remove('translate-x-0');
+    overlay.classList.add('hidden');
+    overlay.classList.remove('block');
+    document.body.style.overflow = '';
+}
+
+// Close drawer on escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMobileDrawer();
+});
+
+// Auto-close drawer when clicking a nav link on mobile
+document.addEventListener('DOMContentLoaded', () => {
+    // Desktop restore collapsed state
+    const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    if (collapsed && window.innerWidth >= 768) {
+        const sidebar = document.getElementById('sidebar');
+        const main = document.getElementById('main-content');
+        const topbar = document.getElementById('topbar');
+        if (sidebar) {
+            sidebar.classList.remove('w-64');
+            sidebar.classList.add('w-16');
+        }
+        if (main) { main.classList.remove('ml-64'); main.classList.add('ml-16'); }
+        if (topbar) { topbar.classList.remove('left-64'); topbar.classList.add('left-16'); }
+        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.add('hidden'));
+    }
+
+    // Mobile: ensure drawer starts closed + tap any nav link closes it
+    const navLinks = document.querySelectorAll('#sidebar a');
+    navLinks.forEach(a => {
+        a.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                setTimeout(closeMobileDrawer, 80);
+            }
+        });
+    });
+
+    // iPhone safe-area nudge for very tall content if needed
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        document.documentElement.style.setProperty('--safe-bottom', 'env(safe-area-inset-bottom)');
+    }
+});
+</script>
+
+    <!-- Global Notes Modal -->
+    <div id="notes-modal" class="hidden fixed inset-0 bg-black/70 z-[100] flex items-center justify-center">
+        <div class="bg-zinc-900 border border-zinc-700 rounded-3xl w-full max-w-md mx-4 overflow-hidden">
+            <div class="px-6 py-5 border-b border-zinc-800 flex items-center justify-between">
+                <div class="font-semibold">Add notes</div>
+                <button onclick="closeNotesModal()" class="text-zinc-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <div class="text-xs text-zinc-400 mb-1">THREAT</div>
+                    <div id="modal-threat-desc" class="text-sm text-zinc-200 line-clamp-2"></div>
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400 block mb-1.5">NOTES (optional)</label>
+                    <textarea id="modal-notes" rows="4" 
+                              class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl p-3 text-sm focus:outline-none focus:border-emerald-500"></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-zinc-950 flex gap-3 justify-end">
+                <button onclick="closeNotesModal()" 
+                        class="px-5 py-2 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-sm">Cancel</button>
+                <button onclick="submitNotesModal()" 
+                        class="px-5 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-sm">Save &amp; Update Status</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pendingStatusUpdate = null;
+
+        function updateTimestamp() {
+            const el = document.getElementById('last-updated');
+            if (el) el.textContent = 'Updated just now';
+        }
+        setInterval(updateTimestamp, 30000);
+        document.body.addEventListener('htmx:afterSwap', updateTimestamp);
+
+        // Notes modal helpers
+        window.showNotesModal = function(threatId, description, newStatus) {
+            pendingStatusUpdate = { threatId, newStatus };
+            document.getElementById('modal-threat-desc').textContent = description || 'Threat #' + threatId;
+            document.getElementById('modal-notes').value = '';
+            document.getElementById('notes-modal').classList.remove('hidden');
+            document.getElementById('notes-modal').classList.add('flex');
+        };
+
+        window.closeNotesModal = function() {
+            document.getElementById('notes-modal').classList.add('hidden');
+            document.getElementById('notes-modal').classList.remove('flex');
+            pendingStatusUpdate = null;
+        };
+
+        window.submitNotesModal = async function() {
+            if (!pendingStatusUpdate) return;
+            const notes = document.getElementById('modal-notes').value.trim();
+            const { threatId, newStatus } = pendingStatusUpdate;
+
+            try {
+                await fetch(`/api/threats/${threatId}/status?status=${newStatus}&notes=${encodeURIComponent(notes)}`, {
+                    method: 'POST'
+                });
+                const threatsEl = document.getElementById('recent-threats');
+                if (threatsEl) htmx.trigger(threatsEl, 'htmx:load');
+                closeNotesModal();
+            } catch (e) {
+                alert("Failed to update status");
+                closeNotesModal();
+            }
+        };
+
+        // NEW: Quick verify without forcing notes modal every time
+        window.quickVerify = async function(threatId, newStatus, description) {
+            if (!confirm(`Mark threat #${threatId} as "${newStatus}"?
+
+${description}`)) return;
+
+            try {
+                const res = await fetch(`/api/threats/${threatId}/status?status=${newStatus}&notes=Quick+action+from+dashboard`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const threatsEl = document.getElementById('recent-threats');
+                    if (threatsEl) htmx.trigger(threatsEl, 'htmx:load');
+                } else {
+                    alert("Update failed");
+                }
+            } catch (e) {
+                alert("Network error during verify");
+            }
+        };
+
+        // Optional: richer "Deep Review" modal can be added later
+    </script>
+</body>
+</html>

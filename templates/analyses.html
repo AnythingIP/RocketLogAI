@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}LLM Analyses • RocketLogAI{% endblock %}
+{% block content %}
+<div class="flex items-end justify-between mb-4">
+    <div>
+        <h1 class="text-2xl font-semibold">LLM Analysis History</h1>
+        <p class="text-xs text-zinc-400">Paginated. Use search to find specific summaries.</p>
+    </div>
+    <a href="/" class="px-3 py-1.5 text-xs rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">← Dashboard</a>
+</div>
+
+<!-- Controls -->
+<div class="mb-4 flex flex-wrap items-center gap-3 bg-zinc-950 border border-zinc-800 rounded-2xl p-3 text-sm">
+    <div class="flex items-center gap-1.5 text-xs">
+        <span class="text-zinc-400">Show</span>
+        <select onchange="location.href='?limit='+this.value+'&offset=0&q={{ q }}'" class="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs">
+            <option value="10" {{ 'selected' if limit==10 else '' }}>10</option>
+            <option value="20" {{ 'selected' if limit==20 else '' }}>20</option>
+            <option value="50" {{ 'selected' if limit==50 else '' }}>50</option>
+            <option value="100" {{ 'selected' if limit==100 else '' }}>100</option>
+        </select>
+    </div>
+
+    <form method="get" class="flex items-center gap-2">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search summary..." class="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1 text-xs w-56">
+        <button type="submit" class="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs">Search</button>
+        {% if q %}<a href="?limit={{ limit }}" class="text-[10px] text-zinc-400">clear</a>{% endif %}
+    </form>
+
+    <div class="ml-auto text-xs text-zinc-400">
+        {% if total is defined %}Showing {{ offset + 1 }}-{{ (offset + limit, total)|min }} of <strong>{{ total }}</strong>{% endif %}
+    </div>
+
+    {% if total is defined and total > limit %}
+    <div class="flex gap-1 text-xs">
+        {% if offset > 0 %}<a href="?limit={{ limit }}&offset={{ ([offset - limit, 0]|max) }}&q={{ q }}" class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">← Prev</a>{% endif %}
+        <a href="?limit={{ limit }}&offset={{ offset + limit }}&q={{ q }}" class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">Next →</a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="space-y-3">
+{% for a in analyses %}
+<a href="/analysis/{{ a.id }}" class="block bg-zinc-900 hover:bg-zinc-800 rounded-2xl p-5 border border-zinc-800">
+    <div class="flex items-center justify-between">
+        <div>
+            <span class="font-medium">Analysis #{{ a.id }}</span>
+            <span class="ml-3 text-sm text-zinc-500">{{ a.started_at[:19] }}</span>
+        </div>
+        <div class="text-xs bg-zinc-950 px-2 py-px rounded">{{ a.model or 'local' }}</div>
+    </div>
+    <div class="mt-2 text-sm">{{ a.summary }}</div>
+    <div class="text-xs mt-1 text-emerald-400">{{ a.threats_found }} threats • {{ a.logs_analyzed or 0 }} logs</div>
+</a>
+{% else %}
+<div class="text-zinc-500">No analyses stored yet.</div>
+{% endfor %}
+</div>
+{% endblock %}

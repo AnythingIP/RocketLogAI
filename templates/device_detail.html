@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Device {{ device.ip or 'Unknown' }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/devices" class="text-sm text-emerald-400 hover:underline">← Back to Device Registry</a>
+</div>
+
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">{{ device.ha_name or device.ip or 'Unknown Device' }}</h1>
+        <p class="text-zinc-400 mt-1 font-mono text-sm">{{ device.ip or '-' }} {% if device.mac %}· {{ device.mac }}{% endif %}</p>
+        {% if device.device_category %}
+        <div class="mt-1 text-sm">
+            <span class="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 text-xs">{{ device.device_category }}</span>
+            {% if device.vendor %}<span class="text-xs text-zinc-400 ml-2">by {{ device.vendor }}</span>{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="mt-1 text-xs">
+            {% if device.is_internal %}
+                <span class="px-2 py-0.5 rounded bg-amber-900/60 text-amber-300">Local / Private IP (internal address only)</span>
+            {% elif device.geo_city or device.geo_country %}
+                <span class="text-zinc-400">Origin: </span>
+                <span class="font-medium">{{ device.geo_city or '' }}{% if device.geo_country %}, {{ device.geo_country }}{% endif %}</span>
+                {% if device.geo_source %}<span class="text-emerald-400 text-[10px] ml-1">(via {{ device.geo_source }})</span>{% endif %}
+                <a href="/maps" class="text-emerald-400 hover:underline ml-1">view on map →</a>
+            {% else %}
+                <span class="text-zinc-500">Origin: not available</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="flex gap-2">
+        <button onclick="reassessWithAI()" class="px-4 py-2 text-sm rounded-2xl bg-purple-900/70 hover:bg-purple-800 text-purple-300 border border-purple-800">Reassess with AI</button>
+        <button onclick="quickAction('{{ device.ip }}', 'trust_current_mac')" class="px-4 py-2 text-sm rounded-2xl bg-teal-900/70 hover:bg-teal-800 text-teal-300 border border-teal-800" title="Trust only the current MAC address for this device (recommended for stable hardware)">Trust This MAC</button>
+        <form method="post" action="/api/devices/{{ device.ip }}/action" onsubmit="return quickFormAction(this, 'learn_baseline')">
+            <button type="submit" class="px-4 py-2 text-sm rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">Learn Normal Behavior</button>
+        </form>
+        <form method="post" action="/api/devices/{{ device.ip }}/action" onsubmit="return quickFormAction(this, 'mark_trusted')">
+            <button type="submit" class="px-4 py-2 text-sm rounded-2xl bg-emerald-900/70 hover:bg-emerald-800 text-emerald-300 border border-emerald-800">Mark Trusted</button>
+        </form>
+        <form method="post" action="/api/devices/{{ device.ip }}/action" onsubmit="return quickFormAction(this, 'mark_untrusted')">
+            <button type="submit" class="px-4 py-2 text-sm rounded-2xl bg-red-900/70 hover:bg-red-800 text-red-300 border border-red-800">Mark Untrusted</button>
+        </form>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Identity & Risk -->
+    <div class="section-card rounded-3xl p-6">
+        <h3 class="font-semibold mb-4 text-lg">Identity &amp; Risk</h3>
+        <p class="text-[10px] text-zinc-400 mb-3">
+            RocketLogAI tracks each device’s MAC history, learned traffic patterns, and runs AI assessments to decide if it should be trusted or investigated.
+            <br><span class="text-emerald-400">New:</span> We now look up the manufacturer from the MAC address (OUI) to understand what kind of device this is and whether its behavior matches typical manufacturer patterns.
+        </p>
+        <div class="space-y-4 text-sm">
+            <div class="flex justify-between">
+                <span class="text-zinc-400">IP Address</span>
+                <span class="font-mono">{{ device.ip or '-' }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-zinc-400">Origin / Location</span>
+                <span>
+                    {% if device.is_internal %}
+                        <span class="text-amber-400">Local / Private IP (internal address only)</span>
+                    {% elif device.geo_city or device.geo_country %}
+                        {{ device.geo_city or '' }}{% if device.geo_country %}, {{ device.geo_country }}{% endif %}
+                        {% if device.geo_source %}<span class="text-[10px] text-emerald-400/70"> ({{ device.geo_source }})</span>{% endif %}
+                    {% else %}
+                        <span class="text-zinc-500">not available</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-zinc-400">MAC Address</span>
+                <span class="font-mono">{{ device.mac or 'Not captured' }}</span>
+            </div>
+            {% if device.vendor %}
+            <div class="flex justify-between">
+                <span class="text-zinc-400">Manufacturer</span>
+                <span>
+                    {% if device.vendor_icon %}<span class="mr-1">{{ device.vendor_icon }}</span>{% endif %}
+                    <span class="font-medium">{{ device.vendor }}</span>
+                    {% if device.device_category %}<span class="text-xs text-zinc-500">({{ device.device_category }})</span>{% endif %}
+                </span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between">
+                <span class="text-zinc-400">Home Assistant</span>
+                <span>{{ device.ha_name or 'Not linked' }}</span>
+            </div>
+            {% if device.ha_device_type %}
+            <div class="flex justify-between">
+                <span class="text-zinc-400">HA Type</span>
+                <span class="font-mono text-xs">{{ device.ha_device_type }}</span>
+            </div>
+            {% endif %}
+            {% if device.ha_area %}
+            <div class="flex justify-between">
+                <span class="text-zinc-400">Area / Room</span>
+                <span>{{ device.ha_area }}</span>
+            </div>
+            {% endif %}
+            <div class="pt-3 border-t border-zinc-800 flex items-center justify-between">
+                <span class="text-zinc-400">Trust Level</span>
+                <span class="px-3 py-0.5 text-xs rounded-full font-semibold
+                    {% if device.trust_level == 'trusted' %}bg-emerald-900 text-emerald-300
+                    {% elif device.trust_level == 'untrusted' %}bg-red-900 text-red-300
+                    {% elif device.trust_level == 'critical' %}bg-orange-900 text-orange-300
+                    {% else %}bg-zinc-700 text-zinc-300{% endif %}">
+                    {{ device.trust_level or 'normal' }}
+                </span>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <span class="text-zinc-400">MAC Trust <span class="text-[10px]">(per-MAC, not whole device)</span></span>
+                <span class="px-2 py-0.5 text-xs rounded-full 
+                    {% if device.mac_trust_level == 'trusted' %}bg-emerald-900 text-emerald-300
+                    {% elif device.mac_trust_level == 'investigate' %}bg-orange-900 text-orange-300
+                    {% else %}bg-zinc-700 text-zinc-400{% endif %}">
+                    {{ device.mac_trust_level or 'unknown' }}
+                </span>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <span class="text-zinc-400">Risk Score</span>
+                <span class="font-semibold text-lg {% if (device.risk_score or 0) > 70 %}text-red-400{% elif (device.risk_score or 0) > 50 %}text-amber-400{% else %}text-emerald-400{% endif %}">
+                    {{ device.risk_score or 35 }}
+                </span>
+            </div>
+
+            {% if device.ai_assessment %}
+            <div class="pt-3 border-t border-zinc-800">
+                <div class="text-xs text-zinc-400 mb-1">AI Device Assessment</div>
+                <div class="text-sm font-medium">{{ device.ai_assessment.verdict | title }} ({{ (device.ai_assessment.confidence * 100)|int if device.ai_assessment.confidence else '?' }}%)</div>
+                <div class="text-xs text-zinc-300 mt-1">{{ device.ai_assessment.summary }}</div>
+                <div class="text-[10px] text-emerald-400 mt-1">{{ device.ai_assessment.recommendation }}</div>
+            </div>
+            {% endif %}
+
+            <!-- Behavior Summary (Human Readable) -->
+            <div class="pt-3 border-t border-zinc-800">
+                <div class="text-xs text-zinc-400 mb-2">Behavior Summary</div>
+                <div class="text-sm text-zinc-200">
+                    {% if device.device_category %}
+                        This looks like a <strong>{{ device.device_category }}</strong>
+                        {% if device.vendor %} from <strong>{{ device.vendor }}</strong>{% endif %}.
+                    {% else %}
+                        Device type not yet classified.
+                    {% endif %}
+                </div>
+
+                {% if threats and threats|length > 0 %}
+                <div class="mt-1.5 text-[10px] text-amber-400">
+                    Recent signals: {{ threats|length }} logged events ({{ threats|selectattr('severity','equalto','high')|list|length + threats|selectattr('severity','equalto','critical')|list|length }} high/crit).
+                </div>
+                {% endif %}
+
+                {% if device.port_assessment and device.port_assessment.status == 'trusted' %}
+                <div class="mt-2 text-xs px-3 py-2 bg-emerald-950/60 border border-emerald-900 rounded-xl">
+                    ✓ Currently trusted — traffic matches expected patterns for this type of device.
+                </div>
+                {% elif device.trust_level == 'trusted' %}
+                <div class="mt-2 text-xs px-3 py-2 bg-emerald-950/60 border border-emerald-900 rounded-xl">
+                    ✓ Manually marked trusted.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Manufacturer Behavior Context -->
+            {% if device.vendor %}
+            <div class="pt-3 border-t border-zinc-800">
+                <div class="text-xs text-zinc-400 mb-1 flex items-center gap-2">
+                    <span>Manufacturer Context</span>
+                    <span class="text-[10px] px-1.5 py-0.5 bg-zinc-800 rounded">WIRESHARK + IEEE</span>
+                </div>
+
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-2xl">{{ device.vendor_icon or '🔌' }}</span>
+                    <div>
+                        <div class="font-medium">{{ device.vendor }}</div>
+                        <div class="text-xs text-zinc-500">{{ device.device_category or 'Unknown device type' }}</div>
+                    </div>
+                </div>
+
+                {% if device.device_category in ['Router / Network', 'Smart Home / IoT', 'Security Camera'] %}
+                <div class="text-[11px] bg-zinc-950 border border-zinc-800 rounded-xl p-2 text-zinc-300">
+                    <strong>Typical behavior:</strong> 
+                    {% if 'Router' in (device.device_category or '') %}This is normally a consumer or small-business router/AP. Common legitimate ports: 80, 443, 22 (management), 53 (DNS), 1900 (UPnP).{% endif %}
+                    {% if 'IoT' in (device.device_category or '') or 'Smart' in (device.device_category or '') %}Consumer smart device / bulb / plug / sensor. Usually only talks outbound on 443 + a few vendor-specific ports. Very little inbound traffic is normal.{% endif %}
+                    {% if 'Camera' in (device.device_category or '') %}IP camera. Common: 554 (RTSP), 80/443 (web), 8000-9000 range for some vendors. High outbound bandwidth on motion is expected.{% endif %}
+                </div>
+                {% endif %}
+
+                <div class="text-xs text-zinc-400 mt-1.5">
+                    Powered by Wireshark manuf + full IEEE OUI/IAB listings for accurate names and longer prefixes.
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- NEW: Port Intelligence + Auto-Trust -->
+            <div class="pt-3 border-t border-zinc-800">
+                <div class="text-xs text-zinc-400 mb-2 flex items-center justify-between">
+                    <span>Port Profile &amp; Auto-Trust</span>
+                    <button onclick="reassessPorts()" class="text-[10px] px-2 py-0.5 bg-purple-900/60 hover:bg-purple-800 rounded text-purple-300">Re-evaluate with AI</button>
+                </div>
+
+                {% if device.port_assessment %}
+                <div class="text-sm">
+                    <span class="font-semibold 
+                        {% if device.port_assessment.status == 'trusted' %}text-emerald-400
+                        {% elif device.port_assessment.status == 'threat' %}text-red-400
+                        {% else %}text-amber-400{% endif %}">
+                        {{ device.port_assessment.status | upper }}
+                    </span>
+                    <span class="text-xs text-zinc-500 ml-1">({{ (device.port_assessment.confidence * 100)|int if device.port_assessment.confidence else 50 }}%)</span>
+                </div>
+                <div class="text-xs text-zinc-400 mt-1">{{ device.port_assessment.reason }}</div>
+
+                {% if device.port_assessment.status == 'trusted' %}
+                <div class="text-[10px] text-emerald-400 mt-1">✓ This device is behaving normally for its vendor/category. It is being treated as trusted unless behavior changes.</div>
+                {% endif %}
+
+                {% if device.expected_ports %}
+                <div class="mt-2 text-[10px]">
+                    <span class="text-sky-400">Expected (vendor):</span>
+                    {% for p in device.expected_ports[:6] %}{{ p.port }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% if device.expected_ports|length > 6 %}…{% endif %}
+                </div>
+                {% endif %}
+
+                <div class="mt-3 text-[10px] bg-zinc-950 p-2 rounded-lg border border-zinc-800">
+                    <div class="text-emerald-400 font-medium mb-0.5">Typical safe behavior for this device type:</div>
+                    {% if 'Router' in (device.device_category or '') or 'Network' in (device.device_category or '') %}
+                    • Outbound DNS (53), HTTPS (443), occasional SSH (22) for management.<br>
+                    • Low inbound traffic unless it's a server. High bandwidth on 80/443 is normal for routers.
+                    {% elif 'Camera' in (device.device_category or '') %}
+                    • RTSP (554), web UI (80/443), vendor cloud ports.<br>
+                    • Bursts of outbound video when motion detected is expected.
+                    {% elif 'IoT' in (device.device_category or '') or 'Smart' in (device.device_category or '') %}
+                    • Mostly outbound HTTPS (443) to vendor cloud.<br>
+                    • Very little inbound. Periodic small heartbeats are normal.
+                    {% else %}
+                    • Follows common patterns for {{ device.device_category or 'this category' }}. Port profile helps detect anomalies.
+                    {% endif %}
+                </div>
+
+                {% if device.geo_source %}
+                <div class="mt-2 text-[10px] text-emerald-400/80">
+                    Location data powered by multi-source geo ({{ device.geo_source }} and others).
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="text-xs text-zinc-500">No port profile yet. Click "Re-evaluate with AI" to let the model suggest normal ports for this {{ device.device_category or 'device' }} and auto-trust if observed traffic matches.</div>
+                {% endif %}
+            </div>
+
+            {% if device.mac_history and device.mac_history|length > 0 %}
+            <div class="pt-3 border-t border-zinc-800">
+                <div class="text-xs text-zinc-400 mb-2">MAC Address History <span class="text-[10px]">(changes may indicate spoofing or device replacement)</span></div>
+                <div class="space-y-1 text-[10px] font-mono">
+                    {% for entry in device.mac_history %}
+                    <div class="flex justify-between bg-zinc-950 px-2 py-0.5 rounded">
+                        <span>{{ entry.mac }}</span>
+                        <span class="text-zinc-500">{{ entry.first_seen[:16] if entry.first_seen else '' }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if device.mac_history|length > 1 %}
+                <div class="text-[10px] text-orange-400 mt-1">Multiple MACs — possible spoofing or device replacement.</div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <div class="text-[10px] text-zinc-500 mt-2">Higher risk = more suspicious (trust + volume + baseline deviation + MAC stability + AI verdict). This page now pulls richer context from the three MAC databases (Wireshark + IEEE) + port behavior analysis. "Trusted" means the device is currently behaving within normal patterns for its vendor/type.</div>
+        </div>
+    </div>
+
+    <!-- Learned Behaviors -->
+    <div class="section-card rounded-3xl p-6 lg:col-span-2">
+        <h3 class="font-semibold mb-4 text-lg flex items-center justify-between">
+            <span>Learned Normal Behaviors</span>
+            <button onclick="learnBaseline()" class="text-xs px-3 py-1 rounded-xl bg-zinc-900 border border-zinc-700 hover:bg-zinc-800">Re-learn from recent threats</button>
+        </h3>
+        {% if device.normal_behaviors and device.normal_behaviors|length > 0 %}
+        <pre class="text-xs bg-black/60 border border-zinc-800 p-4 rounded-2xl overflow-auto max-h-64 text-emerald-300">{{ device.normal_behaviors | tojson(indent=2) }}</pre>
+        <div class="mt-3 text-xs text-zinc-500">Last learned: {{ device.normal_behaviors.learned_at or 'unknown' }}</div>
+        {% else %}
+        <div class="text-sm text-zinc-400 border border-dashed border-zinc-800 rounded-2xl p-6">
+            No baseline learned yet. Click "Learn Normal Behavior" above or the button on the Devices list.
+            RocketLogAI will scan recent threats involving this IP and record common ports, destinations, and patterns.
+        </div>
+        {% endif %}
+
+        {% if device.normal_behaviors and device.normal_behaviors.ignore_https %}
+        <div class="mt-3 inline-flex items-center gap-2 text-xs px-3 py-1 bg-emerald-950 text-emerald-400 rounded-full">HTTPS explicitly ignored for this device</div>
+        {% endif %}
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="section-card rounded-3xl p-6 lg:col-span-3">
+        <h3 class="font-semibold mb-4">Quick Actions</h3>
+        <div class="flex flex-wrap gap-2">
+            <button onclick="quickAction('ignore_https')" class="px-4 py-2 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-sm">Ignore all future HTTPS (443) from this device</button>
+            <button onclick="quickAction('mark_trusted')" class="px-4 py-2 rounded-2xl bg-emerald-900/70 hover:bg-emerald-800 text-emerald-300 border border-emerald-800 text-sm">Mark as Trusted (lower risk)</button>
+            <button onclick="quickAction('mark_untrusted')" class="px-4 py-2 rounded-2xl bg-red-900/70 hover:bg-red-800 text-red-300 border border-red-800 text-sm">Mark as Untrusted (raise risk)</button>
+            <button onclick="quickAction('mark_critical')" class="px-4 py-2 rounded-2xl bg-orange-900/70 hover:bg-orange-800 text-orange-300 border border-orange-800 text-sm">Mark Critical</button>
+            <a href="/automation" class="px-4 py-2 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-sm">Edit Automation Rules →</a>
+        </div>
+        <p class="text-xs text-zinc-500 mt-3">Actions are recorded immediately and affect future threat scoring + suppression decisions.</p>
+    </div>
+
+    <!-- Recent Activity / Threat History -->
+    <div class="section-card rounded-3xl p-6 lg:col-span-3">
+        <h3 class="font-semibold mb-4 text-lg">Recent Activity for this Device ({{ threats|length }} shown)</h3>
+        {% if threats %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left border-b border-zinc-800 text-zinc-400 text-xs">
+                        <th class="pb-2 pr-4">Time</th>
+                        <th class="pb-2 pr-4">Severity</th>
+                        <th class="pb-2 pr-4">Description</th>
+                        <th class="pb-2 pr-4">Status</th>
+                        <th class="pb-2">Link</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-900">
+                    {% for t in threats %}
+                    <tr>
+                        <td class="py-2 pr-4 text-xs text-zinc-400 font-mono">{{ t.created_at[:16] if t.created_at else '-' }}</td>
+                        <td class="py-2 pr-4">
+                            <span class="px-2 py-0.5 text-xs rounded 
+                                {% if t.severity == 'critical' %}bg-red-900 text-red-300
+                                {% elif t.severity == 'high' %}bg-orange-900 text-orange-300
+                                {% elif t.severity == 'medium' %}bg-amber-900 text-amber-300
+                                {% else %}bg-zinc-800{% endif %}">
+                                {{ t.severity or 'info' }}
+                            </span>
+                        </td>
+                        <td class="py-2 pr-4 text-xs max-w-md truncate">{{ t.description or t.notes or '-' }}</td>
+                        <td class="py-2 pr-4 text-xs">
+                            {% if t.status == 'iot_expected' %}
+                            <span class="text-emerald-400">iot_expected</span>
+                            {% elif t.status == 'verified_threat' %}
+                            <span class="text-red-400">verified</span>
+                            {% else %}{{ t.status or 'open' }}{% endif %}
+                        </td>
+                        <td class="py-2">
+                            <a href="/threats#{{ t.id }}" class="text-emerald-400 text-xs hover:underline">view</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-zinc-400">No threat records linked to this IP yet. As RocketLogAI sees activity from {{ device.ip }}, entries will appear here.</p>
+        {% endif %}
+        <div class="mt-4 text-[10px] text-zinc-500">Tip: Use "Learn Normal" after a few days of typical operation so the system knows what chatter is safe for this specific device.</div>
+    </div>
+</div>
+
+<script>
+async function quickAction(action) {
+    if (!confirm('Perform ' + action + ' on {{ device.ip }}?')) return;
+    const res = await fetch('/api/devices/' + encodeURIComponent('{{ device.ip }}') + '/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: action})
+    });
+    const data = await res.json();
+    alert(data.message || 'Done');
+    location.reload();
+}
+
+async function learnBaseline() {
+    if (!confirm('Learn current behavior for {{ device.ip }} as normal?')) return;
+    const res = await fetch('/api/devices/' + encodeURIComponent('{{ device.ip }}') + '/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'learn_baseline'})
+    });
+    const data = await res.json();
+    alert(data.message || 'Baseline learned');
+    location.reload();
+}
+
+function quickFormAction(form, action) {
+    // Hijack the form submit to use fetch instead of full POST navigation
+    event.preventDefault();
+    fetch(form.action, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: action})
+    }).then(r => r.json()).then(data => {
+        alert(data.message || 'Action complete');
+        location.reload();
+    }).catch(() => location.reload());
+    return false;
+}
+
+async function reassessWithAI() {
+    const res = await fetch('/api/devices/' + encodeURIComponent('{{ device.ip }}') + '/reassess', {
+        method: 'POST'
+    });
+    const data = await res.json();
+    alert('AI Assessment: ' + (data.assessment?.verdict || 'done') + '\n' + (data.assessment?.summary || ''));
+    location.reload();
+}
+
+async function reassessPorts() {
+    if (!confirm('Ask the local LLM for typical ports for this vendor + compare against observed traffic? This will auto-trust the device if ports match the manufacturer profile.')) return;
+    const res = await fetch('/api/devices/' + encodeURIComponent('{{ device.ip }}') + '/reassess_ports', {
+        method: 'POST'
+    });
+    const data = await res.json();
+    alert('Port Assessment: ' + (data.assessment?.status || 'done') + '\n' + (data.assessment?.reason || ''));
+    location.reload();
+}
+</script>
+{% endblock %}
