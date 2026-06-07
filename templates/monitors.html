@@ -1,0 +1,1586 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Monitors{% endblock %}
+
+{% block content %}
+<div class="flex items-end justify-between mb-3">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">Service Monitors</h1>
+        <p class="text-zinc-400 mt-1">Deep health checks (not just ports) — now with full IBM i / AS/400 5250 + SSH support</p>
+    </div>
+    <div class="flex gap-2">
+        <button onclick="refreshFromConfig()" 
+                class="px-3 py-1.5 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">Refresh from config.yaml</button>
+        <button onclick="seedExampleMonitors()" 
+                class="px-3 py-1.5 text-sm rounded-xl bg-purple-700 hover:bg-purple-600 text-white border border-purple-500">+ Seed Starter Monitors (generic examples)</button>
+        <a href="/" class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">← Dashboard</a>
+    </div>
+</div>
+
+<div class="mb-4 text-xs text-purple-400 bg-purple-950/20 border border-purple-800 rounded-2xl p-3">
+    <strong>IBM i (iBMi / AS/400) legacy menu automation:</strong> Create a credential of type <code>ibmi_ssh</code> or <code>ibmi_5250</code>, add a monitor of that type, then use the purple English box in the form to drive old greenscreen programs (e.g. "Run the old FINANCE menu option 12 and check for stuck jobs").
+</div>
+
+<!-- Geo Status Widget -->
+<div id="geo-status" class="mb-6 p-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 text-sm flex items-center gap-4">
+    <div class="font-semibold">Geo Status:</div>
+    <div id="geo-status-text" class="text-zinc-400">Loading...</div>
+    <button onclick="loadGeoStatus(true)" class="ml-auto text-xs px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700">Refresh (force reload)</button>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+    <!-- Monitors list + Add form -->
+    <div class="lg:col-span-2">
+        <div class="section-card rounded-3xl p-6 mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">Configured Monitors</h2>
+                <div class="flex gap-2">
+                    <button onclick="showCredentialManager()" 
+                            class="px-3 py-1.5 text-xs rounded-xl bg-zinc-700 hover:bg-zinc-600 border border-zinc-600">Manage Credential Profiles</button>
+                    <button onclick="showAddForm()" 
+                            class="px-4 py-1.5 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white">+ Add Monitor</button>
+                    <a href="/monitors?view=history" class="px-3 py-1.5 text-sm rounded-xl bg-zinc-700 hover:bg-zinc-600 border border-zinc-600">View Full History</a>
+                </div>
+            </div>
+
+            <!-- Global heartbeats toggle (for heartbeats.enabled in config.yaml) -->
+            <div class="mb-3 flex items-center gap-3 text-sm">
+                <span class="text-zinc-400">Global monitoring:</span>
+                <button id="global-hb-toggle" onclick="toggleGlobalHeartbeats()"
+                        class="px-3 py-1 text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">Loading...</button>
+                <span class="text-[10px] text-zinc-500">(changes saved to config.yaml; restart server for background loop)</span>
+            </div>
+
+            <div id="monitors-list" class="space-y-3">
+                <div class="text-zinc-500">Loading monitors...</div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Form (hidden by default) -->
+        <div id="monitor-form-card" class="section-card rounded-3xl p-6 hidden">
+            <h3 id="form-title" class="text-lg font-semibold mb-2">Add New Monitor</h3>
+            <div class="text-[11px] text-emerald-400 mb-3">Start here with Smart Auto-Configure. Saved Credential Profiles are now used for both monitoring and remediation scripts (one clean concept).</div>
+
+            <form id="monitor-form" onsubmit="saveMonitor(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="hidden" id="form-original-name">
+
+                <!-- STEP 1: Device (hero) -->
+                <details open class="md:col-span-2 border border-zinc-700 rounded-xl p-3 bg-zinc-950/40">
+                    <summary class="font-medium text-sm cursor-pointer">1. Device Selection (start here)</summary>
+                    <div class="mt-2">
+                        <label class="block text-xs font-medium text-zinc-400 mb-1.5">Select from devices already discovered on your network</label>
+                        <select id="discovered-device-select" onchange="applyDiscoveredDevice()" 
+                                class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm mb-2">
+                            <option value="">— Choose a discovered device or type manually below —</option>
+                        </select>
+
+                        <!-- Editable working device fields -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                            <div>
+                                <label class="block text-xs text-zinc-400 mb-1">Device Name (editable)</label>
+                                <input id="working-device-name" type="text" class="w-full bg-zinc-900 border border-zinc-600 rounded-xl px-3 py-2 text-sm" placeholder="Will be used as monitor name">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-zinc-400 mb-1">Device IP / Host (editable)</label>
+                                <input id="working-device-host" type="text" class="w-full bg-zinc-900 border border-zinc-600 rounded-xl px-3 py-2 text-sm" placeholder="e.g. 192.168.1.50">
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-emerald-400 mt-1">Smart + Test use the fields above.</div>
+                        <button type="button" onclick="smartAutoConfigureCurrentDevice()"
+                                class="mt-2 text-xs px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-medium">
+                            ✨ Smart Auto-Configure Safe Monitoring + Scripts
+                        </button>
+                    </div>
+                </details>
+
+                <!-- STEP 2: Monitor Settings (spread out) -->
+                <details class="md:col-span-2 border border-zinc-700 rounded-xl p-3 bg-zinc-950/30">
+                    <summary class="font-medium text-sm cursor-pointer">2. Monitor Settings &amp; Scripts</summary>
+                    <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- legacy fields kept for JS compat but now inside section -->
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Monitor Display Name</label>
+                            <input id="form-name" type="text" required class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Host / IP (fallback)</label>
+                            <input id="form-host" type="text" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Type</label>
+                            <select id="form-type" onchange="applyDefaultPort(); updateFormVisibilityForType(); updatePortForType()" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                                <option value="tcp">tcp</option>
+                                <option value="http">http</option>
+                                <option value="https">https</option>
+                                <option value="ssh_version">ssh_version</option>
+                                <option value="ping">ping</option>
+                                <option value="ibmi_ssh">ibmi_ssh (modern IBM i / AS/400)</option>
+                                <option value="ibmi_5250">ibmi_5250 (classic 5250 greenscreen)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Port</label>
+                            <input id="form-port" type="number" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Path (for http/https)</label>
+                            <input id="form-path" type="text" value="/" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Expected String (optional)</label>
+                            <input id="form-expected" type="text" placeholder="e.g. OpenSSH_9.6" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-zinc-400 mb-1">Severity</label>
+                            <select id="form-severity" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                                <option value="low">low</option>
+                                <option value="medium" selected>medium</option>
+                                <option value="high">high</option>
+                                <option value="critical">critical</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs text-zinc-400 mb-1">Remediation Script</label>
+                            <input id="form-remediation" type="text" placeholder="script filename" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm mb-2">
+                            <select id="script-selector" onchange="if(this.value) document.getElementById('form-remediation').value = this.value; this.value='';" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                                <option value="">— Quick select script —</option>
+                            </select>
+                            <div class="mt-1 flex gap-2">
+                                <button type="button" onclick="suggestScriptsFromAI()" class="text-xs px-2 py-0.5 rounded bg-emerald-900">Suggest from AI</button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- STEP 3: Auth + Automation (the former clutter area, now isolated) -->
+                <details class="md:col-span-2 border border-zinc-700 rounded-xl p-3 bg-zinc-950/30">
+                    <summary class="font-medium text-sm cursor-pointer">3. Credentials &amp; Remote Access (used for both monitoring and scripts)</summary>
+                    <div class="mt-3">
+                        <div class="text-sm font-medium mb-2 text-zinc-300">Credentials for remediation scripts (separate from web login)</div>
+                        <div class="mb-2">
+                            <label class="block text-xs text-zinc-400 mb-1">Saved Credential Profile (recommended)</label>
+                            <div class="flex gap-2">
+                                <select id="form-cred-profile" onchange="applyCredentialProfile()" class="flex-1 bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                                    <option value="">— Use manual or create new —</option>
+                                </select>
+                                <button type="button" onclick="showAddCredentialProfileModal()" class="px-3 py-2 text-sm rounded-xl bg-emerald-800">+ Add</button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-xs text-zinc-400 mb-1">Type</label>
+                                <select id="form-cred-type" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                                    <option value="">None</option>
+                                    <option value="local">Local account</option>
+                                    <option value="domain">Domain / AD</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-zinc-400 mb-1">Username</label>
+                                <input id="form-cred-user" type="text" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm" placeholder="local or domain\user">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-zinc-400 mb-1">Password/Key</label>
+                                <input id="form-cred-pass" type="password" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm" placeholder="Will be hashed">
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-amber-400 mt-1">Saved profiles (recommended) are reusable across monitors and scripts. Manual entries here are per-monitor only.</div>
+                        <div class="mt-2">
+                            <button type="button" onclick="testConnectionForMonitor()" class="text-xs px-3 py-1 rounded bg-blue-700">Test Connection</button>
+                            <span id="connection-test-result" class="text-xs ml-2 text-emerald-400"></span>
+                            <div id="connection-discovery" class="mt-1 text-[10px] text-zinc-400 hidden"></div>
+                        </div>
+
+                        <div class="mt-3 border-t border-zinc-700 pt-2">
+                            <label class="block text-xs text-zinc-400 mb-1">Additional automation scripts (optional)</label>
+                            <input id="form-additional-scripts" type="text" placeholder="check_disk_space.sh, ..." class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+                        </div>
+
+                        <!-- English → AI Script Generator -->
+                        <div class="mt-4 border-t border-purple-800 pt-3 bg-purple-950/10 -mx-1 px-2 py-2 rounded-xl" id="ai-script-section">
+                            <label class="block text-xs text-purple-400 mb-1 font-medium flex items-center gap-1">
+                                <span>✨</span> Describe automation in plain English
+                            </label>
+                            <textarea id="ai-script-prompt" rows="2" placeholder="Block all outbound except 443 and 53 on this IoT camera" class="w-full bg-zinc-950 border border-purple-700 rounded-xl px-3 py-2 text-sm"></textarea>
+                            <div class="flex gap-2 mt-1.5">
+                                <button type="button" onclick="generateAutomationScript()" class="text-xs px-3 py-1 rounded bg-purple-700 hover:bg-purple-600 flex-1">Generate with AI</button>
+                                <button type="button" onclick="document.getElementById('ai-script-prompt').value=''" class="text-xs px-2 py-1 rounded bg-zinc-800">Clear</button>
+                            </div>
+                            <div id="ai-script-result" class="mt-2 text-xs hidden bg-zinc-950 p-2 rounded-lg border border-purple-900"></div>
+                            <div class="text-[10px] text-zinc-500 mt-1">After a successful "Test Connection", the system now automatically runs a safe device probe and asks AI for tailored monitor/script suggestions based on what it finds (OS, services, etc.). Generated scripts can be copied into "Additional automation scripts" above or saved as a per-monitor script.</div>
+                        </div>
+                    </div>
+                </details>
+
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Interval (seconds)</label>
+                    <input id="form-interval" type="number" value="300" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div class="flex items-end">
+                    <label class="flex items-center gap-2 text-sm">
+                        <input id="form-enabled" type="checkbox" checked class="accent-emerald-500">
+                        Enabled
+                    </label>
+                </div>
+
+                <div class="md:col-span-2 flex gap-3 mt-2">
+                    <button type="submit" class="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Save Monitor</button>
+                    <button type="button" onclick="hideAddForm()" class="px-6 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Recent Results -->
+    <div>
+        <div class="section-card rounded-3xl p-6">
+            <h2 class="text-lg font-semibold mb-4">Recent Check Results</h2>
+            <div id="recent-results" class="space-y-2 text-sm max-h-[520px] overflow-auto">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let editingName = null;
+let formOriginalParent = null;
+let formOriginalNextSibling = null;
+
+function initFormOriginalPosition() {
+    if (!formOriginalParent) {
+        const fc = document.getElementById('monitor-form-card');
+        if (fc) {
+            formOriginalParent = fc.parentElement;
+            formOriginalNextSibling = fc.nextElementSibling;
+        }
+    }
+}
+
+async function loadMonitors() {
+    initFormOriginalPosition();
+    const res = await fetch('/api/monitors');
+    const data = await res.json();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const isFullHistory = urlParams.get('view') === 'history' || urlParams.get('full_history') === '1';
+
+    if (isFullHistory) {
+        // Hide only the left (monitors list) column; expand the results/history pane
+        const leftCol = document.querySelector('div.lg\\:col-span-2');
+        if (leftCol) leftCol.style.display = 'none';
+        const grid = document.querySelector('div.grid.grid-cols-1');
+        if (grid) {
+            grid.style.gridTemplateColumns = '1fr';
+            // also ensure no max width constraints on the grid itself for full use
+            grid.style.maxWidth = 'none';
+        }
+    }
+
+    const listEl = document.getElementById('monitors-list');
+    // Safeguard: yank form out of list before clearing (in case it was moved under a row for edit)
+    const formCard = document.getElementById('monitor-form-card');
+    if (formCard && listEl.contains(formCard)) {
+        if (formOriginalParent) {
+            if (formOriginalNextSibling && formOriginalNextSibling.parentNode === formOriginalParent) {
+                formOriginalParent.insertBefore(formCard, formOriginalNextSibling);
+            } else {
+                formOriginalParent.appendChild(formCard);
+            }
+        } else {
+            document.body.appendChild(formCard);
+        }
+        formCard.classList.add('hidden');
+    }
+    listEl.innerHTML = '';
+
+    if (!data.monitors || data.monitors.length === 0) {
+        listEl.innerHTML = '<div class="text-zinc-500">No monitors yet. Use the purple seed button above or add manually.</div>';
+    } else {
+        const activeCount = data.monitors.filter(m => m.enabled).length;
+        if (activeCount < 4) {
+            // Gentle nudge for users who only have a couple monitors
+            const nudge = document.createElement('div');
+            nudge.className = 'mb-3 p-3 rounded-2xl bg-purple-950/30 border border-purple-700 text-sm';
+            nudge.innerHTML = `You only have ${activeCount} active monitors${data.monitors.length > activeCount ? ' (' + data.monitors.length + ' total incl. disabled)' : ''}. <button onclick="seedExampleMonitors(); this.closest('.mb-3').remove();" class="underline text-purple-300 hover:text-purple-200">Click here to instantly add useful starters</button> (generic examples for any LAN - edit after adding).`;
+            listEl.appendChild(nudge);
+        }
+
+        data.monitors.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3';
+            div.dataset.name = m.name;
+            if (!m.enabled) {
+                div.style.opacity = '0.55';
+            }
+            const enabledBadge = m.enabled ? '<span class="text-emerald-400 text-xs">●</span>' : '<span class="text-zinc-600 text-xs">○</span>';
+            div.innerHTML = `
+                <div class="min-w-0">
+                    <div class="font-medium flex items-center gap-2">${enabledBadge} ${m.name}</div>
+                    <div class="text-xs text-zinc-500 truncate">${m.host}${m.port ? ':' + m.port : ''} • ${m.type}</div>
+                    ${m.expected ? `<div class="text-[10px] text-amber-400/80 mt-0.5">expects: ${m.expected}</div>` : ''}
+                </div>
+                <div class="flex gap-1.5 flex-shrink-0 flex-wrap">
+                    ${m.enabled ? `
+                    <button onclick="runMonitor('${m.name}')" class="px-2.5 py-1 text-xs rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300">Run</button>
+                    <button onclick="askAIForRemediation('${m.name}', '${m.type || ''}', '${m.host || ''}')" class="px-2.5 py-1 text-xs rounded-lg bg-purple-950 hover:bg-purple-900 text-purple-300">Ask AI</button>
+                    ${m.remediation_action ? `<button onclick="remediateMonitor('${m.name}', '${m.remediation_action}')" class="px-2.5 py-1 text-xs rounded-lg bg-orange-950 hover:bg-orange-900 text-orange-300">Fix</button>` : ''}
+                    ` : ''}
+                    <button onclick="toggleMonitorEnabled('${m.name}', ${!m.enabled})" class="px-2.5 py-1 text-xs rounded-lg ${m.enabled ? 'bg-amber-900 hover:bg-amber-800 text-amber-300' : 'bg-emerald-900 hover:bg-emerald-800 text-emerald-300'}">${m.enabled ? 'Disable' : 'Enable'}</button>
+                    <button onclick="editMonitor(${JSON.stringify(m).replace(/"/g, '&quot;')})" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700">Edit</button>
+                    <button onclick="deleteMonitor('${m.name}')" class="px-2.5 py-1 text-xs rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300">Del</button>
+                    <button onclick="showScriptManager('${m.name}')" class="px-2.5 py-1 text-xs rounded-lg bg-sky-950 hover:bg-sky-900 text-sky-300">Scripts</button>
+                </div>
+            `;
+            listEl.appendChild(div);
+        });
+    }
+
+    // Global heartbeats toggle state from API
+    const hbBtn = document.getElementById('global-hb-toggle');
+    if (hbBtn) {
+        const hbOn = !!data.heartbeats_enabled;
+        hbBtn.textContent = hbOn ? 'Disable globally' : 'Enable globally';
+        hbBtn.className = hbOn 
+            ? 'px-3 py-1 text-xs rounded-lg bg-red-900/70 hover:bg-red-800 text-red-300 border border-red-700' 
+            : 'px-3 py-1 text-xs rounded-lg bg-emerald-900/70 hover:bg-emerald-800 text-emerald-300 border border-emerald-700';
+        hbBtn.dataset.enabled = hbOn ? 'true' : 'false';
+    }
+
+    // Recent results - failures first + toggle
+    // Support ?view=history for full detailed bigger view / page feel
+    const resultsEl = document.getElementById('recent-results');
+    resultsEl.innerHTML = '';
+
+    if (isFullHistory) {
+        // Full history: results pane already expanded by early logic; just size content
+        const recentCard = resultsEl.parentElement;
+        if (recentCard) {
+            recentCard.style.maxWidth = '100%';
+            recentCard.style.width = '100%';
+        }
+        resultsEl.style.maxHeight = 'none';
+        resultsEl.style.height = 'auto';
+        resultsEl.style.overflow = 'auto';
+
+        resultsEl.innerHTML = `
+            <div class="mb-3 flex items-center justify-between">
+                <div>
+                    <a href="/monitors" class="text-emerald-400 hover:underline">← Back to Monitors</a>
+                    <span class="mx-2 text-zinc-500">|</span>
+                    <span class="font-semibold text-lg">Full Monitor Check History</span>
+                </div>
+                <span class="text-xs text-zinc-500">(click any row to expand full details, outputs, scripts etc. — full pane view)</span>
+            </div>
+        `;
+        // Fetch more for full history
+        fetch('/api/monitors?limit=1000')
+            .then(r => r.json())
+            .then(fullData => {
+                let allRes = fullData.recent_results || [];
+                const f = allRes.filter(r => r.success != 1);
+                const s = allRes.filter(r => r.success == 1);
+                const sortedFull = [...f, ...s];
+                const fullContainer = document.createElement('div');
+                fullContainer.className = 'space-y-1 text-sm overflow-auto border border-zinc-800 p-2 rounded-xl bg-zinc-950/50';
+                sortedFull.forEach(r => {
+                    const ok = r.success == 1;
+                    const details = r.details || {};
+                    const fullMsg = r.message || '';
+                    let extraOutput = '';
+                    const out = details.output || details.stdout || details.raw_output || details.banner || '';
+                    if (out) {
+                        const outStr = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                        extraOutput = `<div class="mt-1"><div class="text-[9px] text-zinc-500">Output / details:</div><pre class="text-[9px] bg-zinc-950 p-1 rounded overflow-auto max-h-[60vh] whitespace-pre-wrap">${outStr.slice(0, 8000)}</pre></div>`;
+                    } else if (Object.keys(details).length > 0) {
+                        const slim = {};
+                        for (const k of ['latency_ms', 'remediation_suggested', 'status_code', 'tls_version', 'cert_fingerprint', 'parsed_version', 'script']) {
+                            if (details[k] !== undefined) slim[k] = details[k];
+                        }
+                        if (Object.keys(slim).length) {
+                            extraOutput = `<div class="mt-1 text-[9px] text-zinc-400">Details: <code>${JSON.stringify(slim).slice(0,1000)}</code></div>`;
+                        }
+                    }
+                    const row = document.createElement('details');
+                    row.className = `px-3 py-2 rounded-xl text-xs ${ok ? 'bg-emerald-950/30' : 'bg-red-950/40 font-medium'} border border-zinc-800 mb-1`;
+                    row.innerHTML = `
+                        <summary class="cursor-pointer flex justify-between items-start gap-2 py-1">
+                            <div class="min-w-0">
+                                <span class="font-mono">${r.monitor_name}</span>
+                                <span class="text-[10px] text-zinc-400 ml-1">${fullMsg.length > 120 ? fullMsg.slice(0,117)+'...' : fullMsg}</span>
+                            </div>
+                            <div class="text-right flex-shrink-0 whitespace-nowrap">
+                                ${ok ? '✅' : '❌'} <span class="text-zinc-500">${r.checked_at ? r.checked_at.slice(11,16) : ''}</span>
+                                <span class="text-[9px] text-zinc-400 ml-1">(${r.latency_ms ? Math.round(r.latency_ms) + 'ms' : ''})</span>
+                            </div>
+                        </summary>
+                        <div class="pl-3 pt-1 pb-2 text-[10px] text-zinc-300 border-l border-zinc-700 ml-1">
+                            <div><strong>Message:</strong> ${fullMsg}</div>
+                            ${r.remediation_suggested ? `<div class="text-amber-400">Suggested: ${r.remediation_suggested}</div>` : ''}
+                            ${extraOutput}
+                            ${Object.keys(details).length > 0 && !extraOutput ? `<div class="text-[9px] text-zinc-400 mt-1">Full details: <code>${JSON.stringify(details).slice(0, 2000)}</code></div>` : ''}
+                        </div>
+                    `;
+                    fullContainer.appendChild(row);
+                });
+                resultsEl.appendChild(fullContainer);
+            })
+            .catch(() => {
+                resultsEl.innerHTML += '<div class="text-red-400">Failed to load full history.</div>';
+            });
+    } else {
+        // compact recent view
+        let recent = (data.recent_results || []).slice(0, 20);
+        const failures = recent.filter(r => r.success != 1);
+        const successes = recent.filter(r => r.success == 1);
+
+        // Failures always on top
+        const sorted = [...failures, ...successes].slice(0, 15);
+
+        sorted.forEach(r => {
+            const ok = r.success == 1;
+            const details = r.details || {};
+            const shortMsg = (r.message || '').length > 90 ? (r.message || '').slice(0, 87) + '...' : (r.message || '');
+            const fullMsg = r.message || '';
+
+            // Extract useful output for SSH/script/ping etc. results
+            let extraOutput = '';
+            const out = details.output || details.stdout || details.raw_output || details.banner || '';
+            if (out) {
+                const outStr = typeof out === 'string' ? out : JSON.stringify(out, null, 2);
+                extraOutput = `<div class="mt-1"><div class="text-[9px] text-zinc-500">Output / details:</div><pre class="text-[9px] bg-zinc-950 p-1 rounded overflow-auto max-h-40 whitespace-pre-wrap">${outStr.slice(0, 3000)}</pre></div>`;
+            } else if (Object.keys(details).length > 0) {
+                // Fallback: show key details (avoid huge dumps)
+                const slim = {};
+                for (const k of ['latency_ms', 'remediation_suggested', 'status_code', 'tls_version', 'cert_fingerprint', 'parsed_version']) {
+                    if (details[k] !== undefined) slim[k] = details[k];
+                }
+                if (Object.keys(slim).length) {
+                    extraOutput = `<div class="mt-1 text-[9px] text-zinc-400">Details: ${JSON.stringify(slim)}</div>`;
+                }
+            }
+
+            const row = document.createElement('details');
+            row.className = `px-2 py-1 rounded-xl text-xs ${ok ? 'bg-emerald-950/30' : 'bg-red-950/40 font-medium'} border border-zinc-800`;
+            row.innerHTML = `
+                <summary class="cursor-pointer flex justify-between items-start gap-2 py-1">
+                    <div class="min-w-0">
+                        <span class="font-mono">${r.monitor_name}</span>
+                        <span class="text-[10px] text-zinc-400 ml-1">${shortMsg}</span>
+                    </div>
+                    <div class="text-right flex-shrink-0 whitespace-nowrap">
+                        ${ok ? '✅' : '❌'} <span class="text-zinc-500">${r.checked_at ? r.checked_at.slice(11,16) : ''}</span>
+                        <span class="text-[9px] text-zinc-400 ml-1">(${r.latency_ms ? Math.round(r.latency_ms) + 'ms' : ''})</span>
+                    </div>
+                </summary>
+                <div class="pl-3 pt-1 pb-2 text-[10px] text-zinc-300 border-l border-zinc-700 ml-1">
+                    <div><strong>Message:</strong> ${fullMsg}</div>
+                    ${r.remediation_suggested ? `<div class="text-amber-400">Suggested: ${r.remediation_suggested}</div>` : ''}
+                    ${extraOutput}
+                    ${Object.keys(details).length > 0 && !extraOutput ? `<div class="text-[9px] text-zinc-400 mt-1">Full details: <code>${JSON.stringify(details).slice(0, 400)}</code></div>` : ''}
+                </div>
+            `;
+            resultsEl.appendChild(row);
+        });
+
+        if (failures.length > 0) {
+            const note = document.createElement('div');
+            note.className = 'text-[10px] text-red-400 mt-1 px-1';
+            note.textContent = `${failures.length} recent failure(s) shown first`;
+            resultsEl.appendChild(note);
+        }
+
+        const historyLink = document.createElement('div');
+        historyLink.className = 'text-[10px] text-emerald-400 mt-2 px-1 cursor-pointer hover:underline';
+        historyLink.textContent = 'View full history / all monitors →';
+        historyLink.onclick = () => window.location.href = '/monitors?view=history';
+        resultsEl.appendChild(historyLink);
+    }
+}
+
+function showAddForm() {
+    initFormOriginalPosition();
+    const formCard = document.getElementById('monitor-form-card');
+    // For Add, ensure it's at the original bottom position
+    if (formOriginalParent) {
+        if (formOriginalNextSibling && formOriginalNextSibling.parentNode === formOriginalParent) {
+            formOriginalParent.insertBefore(formCard, formOriginalNextSibling);
+        } else {
+            formOriginalParent.appendChild(formCard);
+        }
+    }
+    formCard.classList.remove('hidden');
+    document.getElementById('form-title').textContent = 'Add New Monitor';
+    document.getElementById('monitor-form').reset();
+    document.getElementById('form-original-name').value = '';
+    editingName = null;
+    // Default to a sensible first type
+    document.getElementById('form-type').value = 'https';
+    setTimeout(applyDefaultPort, 50);
+    setTimeout(updateFormVisibilityForType, 70);
+
+    // Populate remediation script dropdown from prebuilts + API
+    populateScriptDropdown();
+
+    // Load discovered devices for smart selection
+    loadDiscoveredDevicesForForm();
+
+    // Load reusable credential profiles
+    loadCredentialProfilesForForm();
+
+    updateFormVisibilityForType();
+}
+
+async function loadDiscoveredDevicesForForm() {
+    const sel = document.getElementById('discovered-device-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Loading discovered devices... —</option>';
+
+    try {
+        const res = await fetch('/api/discovered-devices');
+        const data = await res.json();
+        sel.innerHTML = '<option value="">— Choose a discovered device or type manually below —</option>';
+
+        if (data.success && data.devices) {
+            data.devices.forEach(dev => {
+                const opt = document.createElement('option');
+                opt.value = JSON.stringify({
+                    ip: dev.ip,
+                    name: dev.name_suggestion,
+                    vendor: dev.vendor,
+                    os: dev.os_guess
+                });
+                opt.textContent = dev.display;
+                sel.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        sel.innerHTML = '<option value="">— Could not load discovered devices —</option>';
+    }
+}
+
+function applyDiscoveredDevice() {
+    const sel = document.getElementById('discovered-device-select');
+    if (!sel || !sel.value) return;
+
+    try {
+        const dev = JSON.parse(sel.value);
+
+        // Populate the editable "working device" fields (these are the source of truth for Smart Config)
+        const workingName = document.getElementById('working-device-name');
+        const workingHost = document.getElementById('working-device-host');
+
+        if (dev.name) workingName.value = dev.name;
+        if (dev.ip) workingHost.value = dev.ip;
+
+        // Also keep the lower fields in sync for backward compatibility
+        const nameInput = document.getElementById('form-name');
+        const hostInput = document.getElementById('form-host');
+        if (dev.name) nameInput.value = dev.name;
+        if (dev.ip) hostInput.value = dev.ip;
+
+        // Trigger smart suggestion using the device object (backend will enrich)
+        fetchSmartSuggestion(dev);
+    } catch (e) {}
+}
+
+async function smartAutoConfigureCurrentDevice() {
+    // Prefer the new editable "working device" fields that live right under the dropdown
+    let host = document.getElementById('working-device-host')?.value.trim();
+    let name = document.getElementById('working-device-name')?.value.trim();
+
+    // Fallback to the older fields
+    if (!host) host = document.getElementById('form-host')?.value.trim();
+    if (!name) name = document.getElementById('form-name')?.value.trim();
+
+    if (!host) {
+        alert("Please select a device or enter an IP/Host in the 'Device IP / Host (editable)' field above the Smart button.");
+        return;
+    }
+
+    const payload = {
+        ip: host,
+        name_suggestion: name || host,
+        vendor: "",
+        os_guess: ""
+    };
+
+    try {
+        const res = await fetch('/api/smart-monitor-suggestion', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success && data.suggestion) {
+            const s = data.suggestion;
+
+            // Update both working fields and legacy fields
+            if (document.getElementById('working-device-name')) document.getElementById('working-device-name').value = s.name || name;
+            if (document.getElementById('working-device-host')) document.getElementById('working-device-host').value = s.host || host;
+
+            document.getElementById('form-name').value = s.name || name;
+            document.getElementById('form-host').value = s.host || host;
+            document.getElementById('form-type').value = s.type || 'tcp';
+            if (s.port) document.getElementById('form-port').value = s.port;
+            if (s.expected) document.getElementById('form-expected').value = s.expected;
+            if (s.severity) document.getElementById('form-severity').value = s.severity;
+
+            const scriptInput = document.getElementById('form-remediation');
+            if (s.recommended_scripts?.length) {
+                scriptInput.value = s.recommended_scripts[0];
+                const addl = document.getElementById('form-additional-scripts');
+                if (addl && s.recommended_scripts.length > 1) addl.value = s.recommended_scripts.slice(1).join(',');
+            }
+
+            updateFormVisibilityForType();
+            filterScriptsByType(s.type);
+
+            alert("Smart configuration applied based on the editable Device IP/Host above. Review the suggested safe scripts before saving.");
+        }
+    } catch (e) {
+        alert("Smart auto-config failed: " + e.message);
+    }
+}
+
+async function fetchSmartSuggestion(deviceInfo) {
+    try {
+        const res = await fetch('/api/smart-monitor-suggestion', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(deviceInfo)
+        });
+        const data = await res.json();
+        if (!data.success || !data.suggestion) return;
+
+        const s = data.suggestion;
+
+        // Aggressively auto-fill
+        if (s.name) document.getElementById('form-name').value = s.name;
+        if (s.host) document.getElementById('form-host').value = s.host;
+
+        const typeSel = document.getElementById('form-type');
+        if (s.type && typeSel) typeSel.value = s.type;
+
+        if (s.port) document.getElementById('form-port').value = s.port;
+        if (s.expected) document.getElementById('form-expected').value = s.expected;
+        if (s.severity) document.getElementById('form-severity').value = s.severity;
+
+        // Auto-select safe scripts
+        const scriptInput = document.getElementById('form-remediation');
+        if (s.recommended_scripts && s.recommended_scripts.length > 0) {
+            scriptInput.value = s.recommended_scripts[0];
+            // Also populate additional scripts with the rest (safe chaining)
+            const additional = document.getElementById('form-additional-scripts');
+            if (additional && s.recommended_scripts.length > 1) {
+                additional.value = s.recommended_scripts.slice(1).join(',');
+            }
+        }
+
+        updateFormVisibilityForType();
+        filterScriptsByType(s.type);
+
+        // Show safety notes
+        if (s.safety_notes && s.safety_notes.length) {
+            const note = s.safety_notes.join(' ');
+            const noteEl = document.createElement('div');
+            noteEl.className = 'text-xs text-amber-400 mt-1 p-2 bg-amber-950/30 rounded';
+            noteEl.textContent = 'Safety: ' + note;
+            const container = scriptInput.parentElement;
+            container.querySelectorAll('.safety-note-temp').forEach(e => e.remove());
+            noteEl.classList.add('safety-note-temp');
+            container.appendChild(noteEl);
+            setTimeout(() => noteEl.remove(), 12000);
+        }
+
+        // TODO: pre-select credential when we have the dropdown
+
+    } catch (e) {
+        console.warn('Smart suggestion failed', e);
+    }
+}
+
+async function testConnectionForMonitor() {
+    const host = document.getElementById('form-host').value.trim();
+    const credType = document.getElementById('form-cred-type').value;
+    const username = document.getElementById('form-cred-user').value.trim();
+    const monitorName = document.getElementById('form-original-name').value || document.getElementById('form-name').value;
+
+    if (!host || !username) {
+        alert("Please fill in at least Host and Username first.");
+        return;
+    }
+
+    // Create a nice modal for secure password entry
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[100]';
+    modal.innerHTML = `
+        <div class="bg-zinc-950 border border-zinc-700 rounded-3xl p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <div class="font-semibold text-lg">Test Connection</div>
+                    <div class="text-xs text-zinc-400">${username}@${host} (using fields above)</div>
+                </div>
+                <button class="text-zinc-400 hover:text-white text-xl" onclick="this.closest('.fixed').remove()">✕</button>
+            </div>
+            
+            <div class="text-sm mb-3 text-zinc-400">Enter password / key passphrase <strong>only for this test</strong>. It will not be stored or logged.</div>
+            
+            <input id="test-conn-password" type="password" placeholder="Password or key passphrase" 
+                   class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm mb-4" autofocus>
+            
+            <div class="flex gap-3">
+                <button onclick="performConnectionTest('${monitorName || ''}', '${host}', '${username}', '${credType}', this)" 
+                        class="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">
+                    Test Connection
+                </button>
+                <button onclick="this.closest('.fixed').remove()" 
+                        class="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">
+                    Cancel
+                </button>
+            </div>
+            <div id="test-conn-status" class="text-xs mt-3 text-center text-zinc-400"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Focus the password field
+    setTimeout(() => {
+        const pw = modal.querySelector('#test-conn-password');
+        if (pw) pw.focus();
+    }, 50);
+}
+
+async function performConnectionTest(monitorName, host, username, credType, button) {
+    const modal = button.closest('.fixed');
+    const pwInput = modal.querySelector('#test-conn-password');
+    const statusEl = modal.querySelector('#test-conn-status');
+    const password = pwInput.value;
+
+    if (!password) {
+        statusEl.textContent = "Password / key passphrase is required for this test.";
+        statusEl.style.color = '#f87171';
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Testing...";
+    statusEl.textContent = "Connecting using the credentials you entered above...";
+    statusEl.style.color = '#fbbf24';
+
+    try {
+        // Always prefer the live values the user just typed in the form
+        const res = await fetch('/api/monitors/test-connection', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                host: host,
+                username: username,
+                password: password,
+                credential_type: credType
+            })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            let html = `✓ <span class="text-emerald-400">Success!</span> ${data.message || data.stdout || ''}`;
+
+            if (data.discovery) {
+                html += `<br><details class="mt-2 text-left"><summary class="cursor-pointer text-purple-300">Device discovery (auto-probed)</summary><pre class="text-[10px] bg-black p-1 mt-1 overflow-auto">${data.discovery}</pre></details>`;
+            }
+            if (data.ai_suggestions) {
+                html += `<br><div class="mt-1 text-purple-300 text-left">AI suggestions after probe:<br><pre class="text-[10px] bg-black p-1">${data.ai_suggestions}</pre></div>`;
+            }
+
+            statusEl.innerHTML = html;
+            statusEl.style.color = '#4ade80';
+
+            // Keep modal open longer so user can see the AI discovery results
+            setTimeout(() => {
+                if (modal && modal.parentNode) modal.remove();
+                // Optionally refresh the monitors list or show a toast
+            }, 6500);
+        } else {
+            statusEl.innerHTML = `✗ ${data.error || data.message || 'Connection failed'}`;
+            statusEl.style.color = '#f87171';
+            button.disabled = false;
+            button.textContent = "Try Again";
+        }
+    } catch (e) {
+        statusEl.textContent = "Error: " + e.message;
+        statusEl.style.color = '#f87171';
+        button.disabled = false;
+        button.textContent = "Try Again";
+    }
+}
+
+function suggestScriptsFromAI() {
+    const type = document.getElementById('form-type').value;
+    const host = document.getElementById('form-host').value.toLowerCase();
+    const remediation = document.getElementById('form-remediation');
+
+    let suggestions = [];
+
+    if (type === 'ssh_version' || host.includes('linux') || host.includes('ubuntu') || host.includes('debian')) {
+        suggestions = ['prebuilts/update_linux_packages.sh', 'prebuilts/daily_linux_maintenance.sh', 'prebuilts/restart_service_linux.sh'];
+    } else if (type === 'https' || host.includes('web') || host.includes('nginx') || host.includes('apache')) {
+        suggestions = ['prebuilts/renew_ssl_cert_example.sh', 'prebuilts/check_disk_space.sh'];
+    } else if (host.includes('switch') || host.includes('cisco') || type.includes('tcp')) {
+        suggestions = ['prebuilts/switch_port_status.sh', 'prebuilts/cisco_asa_vpn_check.sh'];
+    } else if (host.includes('win') || host.includes('domain')) {
+        suggestions = ['prebuilts/windows_update.ps1', 'prebuilts/windows_cert_renew.ps1'];
+    }
+
+    if (suggestions.length > 0) {
+        remediation.value = suggestions[0];
+        alert('AI suggestion based on device type:\n' + suggestions.join('\n') + '\n\n(Main one set. Add more to "Additional scripts" field for chaining.)');
+    } else {
+        alert('No strong suggestion yet. Try setting a clear host/type first.');
+    }
+}
+
+async function populateScriptDropdown() {
+    const sel = document.getElementById('script-selector');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Select a script —</option>';
+
+    try {
+        const res = await fetch('/api/remediation-scripts');
+        const data = await res.json();
+        if (data.success && data.prebuilts) {
+            const group = document.createElement('optgroup');
+            group.label = 'Prebuilt Scripts';
+            data.prebuilts.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.path;   // e.g. prebuilts/update_linux_packages.sh
+                opt.textContent = s.name;
+                group.appendChild(opt);
+            });
+            sel.appendChild(group);
+        }
+    } catch (e) {
+        console.warn('Could not load remediation scripts list', e);
+    }
+
+    // Add a helpful option for uploaded scripts note
+    const noteOpt = document.createElement('option');
+    noteOpt.value = '';
+    noteOpt.textContent = '(Uploaded scripts per monitor appear here after upload)';
+    noteOpt.disabled = true;
+    sel.appendChild(noteOpt);
+}
+
+function hideAddForm() {
+    const formCard = document.getElementById('monitor-form-card');
+    formCard.classList.add('hidden');
+    // Restore to original position in the layout (after the list section)
+    if (formOriginalParent) {
+        if (formOriginalNextSibling && formOriginalNextSibling.parentNode === formOriginalParent) {
+            formOriginalParent.insertBefore(formCard, formOriginalNextSibling);
+        } else {
+            formOriginalParent.appendChild(formCard);
+        }
+    }
+    editingName = null;
+}
+
+function applyDefaultPort() {
+    const type = document.getElementById('form-type').value;
+    const portInput = document.getElementById('form-port');
+    const defaults = { ssh_version: 22, https: 443, http: 80, tcp: 22, ping: 0 };
+    if (defaults[type] !== undefined && (!portInput.value || portInput.value === '0')) {
+        portInput.value = defaults[type];
+        portInput.classList.add('border-emerald-700');
+        setTimeout(() => portInput.classList.remove('border-emerald-700'), 1200);
+    }
+}
+
+function editMonitor(m) {
+    initFormOriginalPosition();
+    const formCard = document.getElementById('monitor-form-card');
+    document.getElementById('form-title').textContent = 'Edit Monitor';
+    editingName = m.name;
+
+    document.getElementById('form-original-name').value = m.name;
+    document.getElementById('form-name').value = m.name;
+    document.getElementById('form-host').value = m.host || '';
+    document.getElementById('form-type').value = m.type || 'tcp';
+    document.getElementById('form-port').value = m.port || '';
+    document.getElementById('form-path').value = m.path || '/';
+    document.getElementById('form-expected').value = m.expected || '';
+    document.getElementById('form-severity').value = m.severity || 'medium';
+    document.getElementById('form-remediation').value = m.remediation_action || '';
+    document.getElementById('form-interval').value = m.interval_seconds || 300;
+    document.getElementById('form-enabled').checked = !!m.enabled;
+
+    // Populate the editable "working device" fields too (used by Smart Auto-Config)
+    const wname = document.getElementById('working-device-name');
+    const whost = document.getElementById('working-device-host');
+    if (wname) wname.value = m.name || '';
+    if (whost) whost.value = m.host || '';
+
+    // Additional scripts (if any stored; may be empty until persistence extended)
+    const addl = document.getElementById('form-additional-scripts');
+    if (addl) addl.value = (m.additional_scripts || '').toString();
+
+    // Credentials (password never pre-filled for security)
+    document.getElementById('form-cred-type').value = m.credential_type || '';
+    document.getElementById('form-cred-user').value = m.credential_username || '';
+    document.getElementById('form-cred-pass').value = '';  // never show existing password
+
+    // Apply visual default hint if the port looks empty for the loaded type
+    setTimeout(applyDefaultPort, 30);
+    // Ensure path/expected visibility matches the type (http etc)
+    setTimeout(updateFormVisibilityForType, 60);
+
+    // Drop the form right under the specific monitor row being edited
+    const list = document.getElementById('monitors-list');
+    let targetRow = null;
+    for (let child of list.children) {
+        if (child.dataset && child.dataset.name === m.name) {
+            targetRow = child;
+            break;
+        }
+    }
+    if (targetRow) {
+        targetRow.after(formCard);
+    }
+    formCard.classList.remove('hidden');
+
+    // Also load supporting dropdowns (non-destructive to our values)
+    try { loadCredentialProfilesForForm(); } catch(e){}
+    try { populateScriptDropdown(); } catch(e){}
+}
+
+async function saveMonitor(e) {
+    e.preventDefault();
+    const original = document.getElementById('form-original-name').value;
+    const payload = {
+        name: document.getElementById('form-name').value,
+        host: document.getElementById('form-host').value,
+        type: document.getElementById('form-type').value,
+        port: parseInt(document.getElementById('form-port').value) || null,
+        path: document.getElementById('form-path').value,
+        expected: document.getElementById('form-expected').value || null,
+        severity: document.getElementById('form-severity').value,
+        remediation_action: document.getElementById('form-remediation').value || null,
+        interval_seconds: parseInt(document.getElementById('form-interval').value) || 300,
+        enabled: document.getElementById('form-enabled').checked,
+
+        // Secure per-monitor credentials (separate from web login)
+        credential_type: document.getElementById('form-cred-type').value || null,
+        credential_username: document.getElementById('form-cred-user').value || null,
+        credential_secret: document.getElementById('form-cred-pass').value || null,  // will be hashed server-side if provided
+    };
+
+    let url = '/api/monitors';
+    let method = 'POST';
+    if (original) {
+        url = `/api/monitors/${encodeURIComponent(original)}`;
+        method = 'PUT';
+    }
+
+    const res = await fetch(url, {
+        method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+        hideAddForm();
+        loadMonitors();
+    } else {
+        alert('Save failed: ' + (data.error || 'unknown'));
+    }
+}
+
+async function deleteMonitor(name) {
+    if (!confirm(`Are you sure you want to DELETE monitor "${name}" and ALL its history/results?\n\nThis cannot be undone!`)) return;
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}`, {method: 'DELETE'});
+    const data = await res.json();
+    if (data.success) loadMonitors();
+    else alert('Delete failed');
+}
+
+async function runMonitor(name) {
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/run`, {method: 'POST'});
+    const data = await res.json();
+    alert(data.success ? 'Check completed' : 'Failed: ' + (data.error || ''));
+    loadMonitors();
+}
+
+async function remediateMonitor(name, action) {
+    if (!confirm(`Run remediation "${action}" for ${name}?`)) return;
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/remediate?action=${action}`, {method: 'POST'});
+    const data = await res.json();
+    alert(JSON.stringify(data.result, null, 2));
+    loadMonitors();
+}
+
+async function loadGeoStatus(force = false) {
+    try {
+        const url = force ? '/api/geo/status?refresh=1' : '/api/geo/status';
+        const res = await fetch(url);
+        const data = await res.json();
+        const el = document.getElementById('geo-status-text');
+        if (data.available) {
+            el.innerHTML = `<span class="text-emerald-400">✓ Active</span> — ${data.db_path || 'unknown'} <span class="text-zinc-500">(${data.cached_ips || 0} cached IPs)</span>`;
+            document.getElementById('geo-status').classList.add('border-emerald-900');
+        } else {
+            el.innerHTML = `<span class="text-red-400">✗ Not active</span> — ${data.message}. Place GeoLite2-City.mmdb in <code>/Volumes/logsentinel</code> (or ~/.logsentinel) then click Refresh. <a href="https://www.maxmind.com/en/geolite2/signup" target="_blank" class="underline">Get GeoLite2</a> + <code>pip install geoip2</code>`;
+            document.getElementById('geo-status').classList.add('border-red-900');
+        }
+    } catch (e) {
+        document.getElementById('geo-status-text').textContent = 'Failed to load geo status';
+    }
+}
+
+async function refreshFromConfig() {
+    if (!confirm('Re-import all monitors from config.yaml into the database? Existing web-edited monitors with the same name will be overwritten.')) return;
+    const res = await fetch('/api/monitors/refresh-from-config', {method: 'POST'});
+    const data = await res.json();
+    if (data.success) {
+        alert(`Synced ${data.synced} monitors from config.`);
+        loadMonitors();
+    } else {
+        alert('Refresh failed: ' + (data.error || 'unknown'));
+    }
+}
+
+async function seedExampleMonitors() {
+    if (!confirm('Add a set of useful starter monitors (generic examples for any home/lab LAN)? Edit the hosts, IPs, credentials and intervals after adding. This is safe and will not overwrite existing ones with the same name.')) return;
+    const res = await fetch('/api/monitors/seed-examples', {method: 'POST'});
+    const data = await res.json();
+    if (data.success) {
+        alert(data.message || `Added ${data.added} starter monitors.`);
+        loadMonitors();
+    } else {
+        alert('Seeding failed: ' + (data.error || 'unknown'));
+    }
+}
+
+async function toggleGlobalHeartbeats() {
+    const btn = document.getElementById('global-hb-toggle');
+    if (!btn) return;
+    const currentlyOn = btn.dataset.enabled === 'true';
+    const newVal = !currentlyOn;
+    try {
+        const res = await fetch('/api/config/heartbeats', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled: newVal })
+        });
+        const d = await res.json();
+        if (d.success) {
+            // refresh to update button and any list badges if needed
+            loadMonitors();
+        } else {
+            alert('Global toggle failed: ' + (d.error || 'unknown'));
+        }
+    } catch (e) {
+        alert('Error toggling global monitoring: ' + e);
+    }
+}
+
+async function toggleMonitorEnabled(name, newEnabled) {
+    try {
+        const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled: newEnabled })
+        });
+        const d = await res.json();
+        if (d.success) {
+            loadMonitors();
+        } else {
+            alert('Toggle failed: ' + (d.error || 'unknown'));
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+    }
+}
+
+// === New AI + Script features (added for deep https + smart remediation) ===
+
+async function askAIForRemediation(name, type, host) {
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/run`, { method: 'POST' });
+    const runData = await res.json();
+
+    const ctx = {
+        name, type, host,
+        message: runData.result?.message || '',
+        details: runData.result?.details || {},
+    };
+
+    const suggestRes = await fetch('/api/remediation/suggest', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(ctx)
+    });
+    const s = await suggestRes.json();
+
+    let html = `<div class="text-sm space-y-3">`;
+    (s.suggestions || []).forEach(sug => {
+        html += `<div class="border border-zinc-800 rounded-xl p-3">
+            <div class="font-semibold text-emerald-300">${sug.title}</div>
+            <div class="text-xs text-zinc-400 mt-0.5">${sug.action}</div>
+            <ul class="mt-2 text-xs list-disc pl-4 text-zinc-300">${(sug.steps || []).map(st => `<li>${st}</li>`).join('')}</ul>
+        </div>`;
+    });
+    if (s.llm_additions) {
+        html += `<div class="mt-3 p-3 bg-purple-950/40 rounded-xl text-xs"><b>AI additions:</b><br>${s.llm_additions}</div>`;
+    }
+    html += `</div>`;
+
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-zinc-950 border border-zinc-700 rounded-3xl p-6 max-w-2xl w-full mx-4">
+            <div class="flex justify-between mb-4">
+                <div class="font-semibold text-lg">AI Remediation Suggestions — ${name}</div>
+                <button class="text-zinc-400 hover:text-white" onclick="this.closest('.fixed').remove()">✕</button>
+            </div>
+            ${html}
+            <div class="mt-4 text-[10px] text-zinc-500">These are suggestions only. All execution (scripts, commands, cert changes) requires explicit human confirmation.</div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+let currentScriptMonitor = null;
+
+async function showScriptManager(name) {
+    currentScriptMonitor = name;
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/remediation-script`);
+    const data = await res.json();
+
+    let html = `<div class="space-y-4">`;
+    if (!data.scripts || data.scripts.length === 0) {
+        html += `<div class="text-zinc-400">No scripts attached yet. Upload one below (max 1 MB).</div>`;
+    } else {
+        data.scripts.forEach(sc => {
+            html += `<div class="border border-zinc-800 rounded-xl p-3 text-sm">
+                <div class="font-mono text-emerald-300">${sc.filename}</div>
+                <div class="text-[10px] text-zinc-500">${sc.size} bytes — uploaded ${sc.meta?.uploaded_at?.slice(0,16) || ''}</div>
+                <pre class="mt-2 max-h-40 overflow-auto bg-black/50 p-2 text-xs rounded">${sc.content_preview}</pre>
+                <div class="mt-2 flex gap-2">
+                    <button onclick="runAttachedScript('${name}', '${sc.filename}')" class="px-3 py-1 text-xs bg-sky-900 rounded">Run (preview first)</button>
+                </div>
+            </div>`;
+        });
+    }
+
+    html += `<div class="mt-4 pt-4 border-t border-zinc-800">
+        <label class="block text-xs mb-1">Upload new script (.sh / .py / .txt, ≤1MB)</label>
+        <input type="file" id="script-upload" class="text-sm">
+        <button onclick="uploadScriptForCurrentMonitor()" class="mt-2 px-4 py-1.5 text-sm rounded bg-emerald-700">Upload</button>
+    </div></div>`;
+
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-zinc-950 border border-zinc-700 rounded-3xl p-6 max-w-3xl w-full mx-4">
+            <div class="flex justify-between mb-4">
+                <div class="font-semibold text-lg">Remediation / Investigation Scripts — ${name}</div>
+                <button class="text-zinc-400 hover:text-white" onclick="this.closest('.fixed').remove()">✕</button>
+            </div>
+            ${html}
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+async function uploadScriptForCurrentMonitor() {
+    if (!currentScriptMonitor) return;
+    const input = document.getElementById('script-upload');
+    if (!input || !input.files.length) { alert('Choose a file first'); return; }
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+
+    const res = await fetch(`/api/monitors/${encodeURIComponent(currentScriptMonitor)}/remediation-script`, {
+        method: 'POST',
+        body: fd
+    });
+    const j = await res.json();
+    if (j.success) {
+        alert('Script uploaded. Re-open the Scripts dialog to see it.');
+        document.querySelectorAll('.fixed').forEach(el => el.remove());
+        showScriptManager(currentScriptMonitor);
+    } else {
+        alert('Upload failed: ' + (j.error || 'unknown'));
+    }
+}
+
+async function runAttachedScript(name, filename) {
+    if (!confirm(`Preview and then run "${filename}" for ${name}? This executes on the LogSentinel host.`)) return;
+
+    // Fetch preview
+    const previewRes = await fetch(`/api/monitors/${encodeURIComponent(name)}/remediation-script`);
+    const p = await previewRes.json();
+    const script = (p.scripts || []).find(s => s.filename === filename);
+    if (!script) { alert('Script not found'); return; }
+
+    const confirmed = confirm(`LAST CHANCE — This will actually execute the script below on the server.\n\n${script.content_preview.slice(0,600)}\n\nProceed?`);
+    if (!confirmed) return;
+
+    const execRes = await fetch(`/api/monitors/${encodeURIComponent(name)}/run-script`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ script_filename: filename, confirmed: true })
+    });
+    const ex = await execRes.json();
+    alert('Execution result:\n' + JSON.stringify(ex.result || ex, null, 2));
+    loadMonitors();
+}
+
+loadMonitors();
+loadGeoStatus();
+setInterval(loadMonitors, 30000);
+setInterval(loadGeoStatus, 60000);
+
+function updateFormVisibilityForType() {
+    const type = document.getElementById('form-type')?.value || 'tcp';
+    const pathRow = document.getElementById('form-path')?.closest('div');
+    const expectedRow = document.getElementById('form-expected')?.closest('div');
+
+    // Hide irrelevant fields based on type
+    if (pathRow) pathRow.style.display = (type === 'http' || type === 'https') ? '' : 'none';
+    if (expectedRow) expectedRow.style.display = (type === 'ssh_version' || type === 'http' || type === 'https') ? '' : 'none';
+
+    // Future: we can also filter the script selector here based on type + discovered vendor
+    filterScriptsByType(type);
+
+    // iBMi special UX - make the English prompt box super prominent for legacy menu automation
+    const promptBox = document.getElementById('ai-script-prompt');
+    const section = document.getElementById('ai-script-section');
+    const isIbmi = type === 'ibmi_ssh' || type === 'ibmi_5250';
+
+    if (isIbmi) {
+        if (promptBox) promptBox.placeholder = 'Run the old FINANCE menu option 12 nightly close and report stuck jobs';
+        if (section) {
+            section.style.borderColor = '#581c87';
+            section.style.background = 'rgba(88, 28, 135, 0.15)';
+        }
+        if (!document.getElementById('ibmi-quick-examples')) {
+            const ex = document.createElement('div');
+            ex.id = 'ibmi-quick-examples';
+            ex.className = 'text-[10px] mt-1 text-purple-300';
+            ex.innerHTML = `Legacy menu examples: <span class="cursor-pointer underline" onclick="document.getElementById('ai-script-prompt').value='Run the old FINANCE nightly close from menu option 12'">FINANCE close</span> · <span class="cursor-pointer underline" onclick="document.getElementById('ai-script-prompt').value='Go to WRKMBRPDM for QRPGLESRC like the classic PDM menu'">WRKMBRPDM source</span>`;
+            section.appendChild(ex);
+        }
+    } else {
+        if (promptBox) promptBox.placeholder = 'Block all outbound except 443 and 53 on this IoT camera';
+        if (section) {
+            section.style.borderColor = '';
+            section.style.background = '';
+        }
+        const ex = document.getElementById('ibmi-quick-examples');
+        if (ex) ex.remove();
+    }
+}
+
+function updatePortForType() {
+    const typeSel = document.getElementById('form-type');
+    const portInput = document.getElementById('form-port');
+    if (!typeSel || !portInput) return;
+
+    const type = typeSel.value;
+
+    // Only set default if port is currently empty or looks like a previous default
+    const currentPort = portInput.value.trim();
+
+    let defaultPort = '';
+    if (type === 'http') defaultPort = '80';
+    else if (type === 'https') defaultPort = '443';
+    else if (type === 'ssh_version') defaultPort = '22';
+    else if (type === 'tcp') defaultPort = ''; // leave blank for generic tcp
+
+    if (!currentPort || ['80', '443', '22'].includes(currentPort)) {
+        portInput.value = defaultPort;
+    }
+}
+
+function filterScriptsByType(currentType) {
+    // Basic client-side filtering. Real smarts come from server + device vendor.
+    const sel = document.getElementById('script-selector');
+    if (!sel) return;
+
+    const typeLower = (currentType || '').toLowerCase();
+    Array.from(sel.options).forEach(opt => {
+        if (!opt.value) return;
+        const val = opt.value.toLowerCase();
+        let show = true;
+
+        if (typeLower.includes('ssh') && val.includes('.ps1')) show = false;
+        if ((typeLower === 'http' || typeLower === 'https') && (val.includes('linux') || val.includes('restart_service'))) show = true; // allow some
+
+        // Windows vs Linux rough filter
+        if (typeLower.includes('windows') && (val.includes('linux') || val.includes('.sh') && !val.includes('windows'))) {
+            show = false;
+        }
+
+        opt.style.display = show ? '' : 'none';
+    });
+}
+
+async function loadCredentialProfilesForForm() {
+    const sel = document.getElementById('form-cred-profile');
+    if (!sel) return;
+
+    try {
+        const res = await fetch('/api/credential-profiles');
+        const data = await res.json();
+        sel.innerHTML = '<option value="">— Use manual entry below or create new —</option>';
+
+        if (data.success && data.profiles) {
+            data.profiles.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = JSON.stringify(p);
+                opt.textContent = `${p.name} (${p.type})`;
+                sel.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.warn('Could not load credential profiles');
+    }
+}
+
+function applyCredentialProfile() {
+    const sel = document.getElementById('form-cred-profile');
+    if (!sel || !sel.value) return;
+
+    try {
+        const profile = JSON.parse(sel.value);
+        document.getElementById('form-cred-type').value = profile.type || '';
+        document.getElementById('form-cred-user').value = profile.username || '';
+        // Never prefill secret for security
+        document.getElementById('form-cred-pass').value = '';
+    } catch (e) {}
+}
+
+async function showAddCredentialProfileModal() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-[110]';
+    modal.innerHTML = `
+        <div class="bg-zinc-950 border border-zinc-700 rounded-3xl p-6 w-full max-w-md mx-4">
+            <div class="font-semibold text-lg mb-4">Add New Credential Profile</div>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-zinc-400">Profile Name</label>
+                    <input id="new-cred-name" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm" placeholder="e.g. Linux Server Admin">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400">Type</label>
+                    <select id="new-cred-type" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        <option value="local">Local account (Linux/Windows/SSH)</option>
+                        <option value="domain">Domain / AD account</option>
+                        <option value="ssh_key">SSH Private Key</option>
+                        <option value="token">API Token / Passkey</option>
+                        <option value="windows_wmi">Windows WMI / WinRM</option>
+                        <option value="ibmi_5250">IBM i (AS/400) 5250 / Telnet</option>
+                        <option value="ibmi_ssh">IBM i (AS/400) SSH (preferred on modern systems)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400">Username</label>
+                    <input id="new-cred-username" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400">Password / Key / Token</label>
+                    <input id="new-cred-secret" type="password" class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-5">
+                <button onclick="saveNewCredentialProfile(this)" class="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">
+                    Save Credential Profile
+                </button>
+                <button onclick="this.closest('.fixed').remove()" class="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function saveNewCredentialProfile(button) {
+    const modal = button.closest('.fixed');
+    const name = document.getElementById('new-cred-name').value.trim();
+    const type = document.getElementById('new-cred-type').value;
+    const username = document.getElementById('new-cred-username').value.trim();
+    const secret = document.getElementById('new-cred-secret').value;
+
+    if (!name || !username) {
+        alert("Name and Username are required.");
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Saving...";
+
+    try {
+        const res = await fetch('/api/credential-profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, type, username, secret })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            modal.remove();
+            // Refresh the credential profile dropdown
+            await loadCredentialProfilesForForm();
+            alert("Credential profile saved. You can now select it for devices.");
+        } else {
+            alert("Failed to save: " + (data.error || "Unknown error"));
+            button.disabled = false;
+            button.textContent = "Save Credential Profile";
+        }
+    } catch (e) {
+        alert("Error saving credential: " + e.message);
+        button.disabled = false;
+        button.textContent = "Save Credential Profile";
+    }
+}
+
+// NEW: surface a clean "Manage Credentials" experience (reuses existing modal + API)
+async function showCredentialManager() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-lg">
+            <div class="flex justify-between mb-3">
+                <div class="font-semibold">Credential Profiles (Local Users &amp; Domain)</div>
+                <button onclick="this.closest('.fixed').remove()" class="text-zinc-400">✕</button>
+            </div>
+            <div id="cred-list" class="text-sm space-y-2 max-h-72 overflow-auto mb-3"></div>
+            <div class="flex gap-2">
+                <button onclick="this.closest('.fixed').remove(); showAddCredentialProfileModal()" class="flex-1 px-4 py-2 rounded-xl bg-emerald-600 text-sm">+ Add New Local or Domain Profile</button>
+                <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 rounded-xl bg-zinc-700 text-sm">Close</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    const list = modal.querySelector('#cred-list');
+    try {
+        const res = await fetch('/api/credential-profiles');
+        const j = await res.json();
+        if (j.profiles && j.profiles.length) {
+            list.innerHTML = j.profiles.map(p => `
+                <div class="flex justify-between items-center bg-zinc-950 px-3 py-1.5 rounded">
+                    <div><strong>${p.name}</strong> <span class="text-xs text-zinc-400">(${p.type})</span> — ${p.username}</div>
+                    <button onclick="deleteCredentialProfile('${p.name}', this)" class="text-xs px-2 py-0.5 rounded bg-red-900/60 hover:bg-red-800 text-red-300">Delete</button>
+                </div>`).join('');
+        } else {
+            list.innerHTML = '<div class="text-zinc-400">No profiles yet. Create one for local users or domain accounts.</div>';
+        }
+    } catch (e) {
+        list.innerHTML = '<div class="text-red-400">Failed to load profiles</div>';
+    }
+}
+
+async function deleteCredentialProfile(name, btn) {
+    if (!confirm('Delete credential profile "' + name + '"?')) return;
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/credential-profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            btn.closest('.fixed')?.remove();
+            // Refresh the manager
+            setTimeout(() => showCredentialManager(), 100);
+        } else {
+            alert('Delete failed: ' + (data.error || ''));
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert('Error: ' + e);
+        btn.disabled = false;
+    }
+}
+
+// English → AI-generated automation/remediation script (uses existing /api/remediation/suggest which already supports prompt + returns generated_script)
+async function generateAutomationScript() {
+    const promptEl = document.getElementById('ai-script-prompt');
+    const resultEl = document.getElementById('ai-script-result');
+    const prompt = (promptEl?.value || '').trim();
+    if (!prompt) {
+        alert("Please describe what you want the script to do in plain English.");
+        return;
+    }
+    resultEl.innerHTML = '<div class="text-purple-300 animate-pulse">✨ Asking AI to write a safe script for you...</div>';
+    resultEl.classList.remove('hidden');
+
+    try {
+        const formName = document.getElementById('form-original-name')?.value || '';
+        const formType = document.getElementById('form-type')?.value || '';
+        const formHost = document.getElementById('working-device-host')?.value || document.getElementById('form-host')?.value || '';
+
+        const res = await fetch('/api/remediation/suggest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ prompt, name: formName, type: formType, host: formHost })
+        });
+        const data = await res.json();
+
+        let html = `<div class="space-y-2">`;
+        if (data.generated_script) {
+            html += `<div class="text-[10px] text-emerald-300 font-medium">AI wrote this safe script based on your request:</div>`;
+            html += `<pre class="bg-black/70 p-2 rounded text-[10px] overflow-auto max-h-36 text-amber-200 font-mono">${(data.generated_script || '').replace(/</g,'&lt;')}</pre>`;
+            html += `<div class="flex gap-1.5 mt-1">`;
+            html += `<button onclick="copyGeneratedScript(this)" class="text-[10px] px-2.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700">📋 Copy</button>`;
+            html += `<button onclick="useGeneratedScript(this, '${(data.generated_script || '').replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" class="text-[10px] px-2.5 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600">Use / Append to Additional Scripts</button>`;
+            html += `</div>`;
+            if (data.generated_from_prompt) {
+                html += `<div class="text-[9px] text-zinc-500 mt-0.5">From: "${data.generated_from_prompt.substring(0,80)}..."</div>`;
+            }
+        } else if (data.suggestions && data.suggestions.length > 0) {
+            html += `<div class="text-xs text-zinc-300">AI suggestions:</div>`;
+            data.suggestions.forEach(s => {
+                html += `<div class="text-[11px] border-l-2 border-purple-700 pl-2">${s.title || ''} — ${s.description || s.action || ''}</div>`;
+            });
+        } else {
+            html += `<div class="text-xs text-zinc-400">No script generated. Try rephrasing (e.g. "check disk usage and alert if over 90%").</div>`;
+        }
+        html += `</div>`;
+        resultEl.innerHTML = html;
+    } catch (e) {
+        resultEl.innerHTML = `<div class="text-red-400 text-xs">Generation error: ${e.message || e}. Check that an LLM is configured and reachable.</div>`;
+    }
+}
+
+function copyGeneratedScript(btn) {
+    const pre = btn.closest('div').parentElement.querySelector('pre');
+    if (pre && navigator.clipboard) {
+        navigator.clipboard.writeText(pre.textContent).then(() => {
+            const orig = btn.textContent;
+            btn.textContent = '✅ Copied';
+            setTimeout(() => { btn.textContent = orig; }, 1400);
+        });
+    }
+}
+
+function useGeneratedScript(btn, script) {
+    // Try to append a reference into the additional scripts field of the open form
+    const addScripts = document.getElementById('form-additional-scripts');
+    const note = " (AI-generated: " + (script.substring(0, 50).replace(/\n/g,' ') + '... see Scripts manager for full file)');
+    if (addScripts) {
+        const cur = (addScripts.value || '').trim();
+        addScripts.value = cur ? (cur + ', ai-remediation-from-prompt.sh') : 'ai-remediation-from-prompt.sh';
+    }
+    // Also offer the full text
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(script);
+    }
+    const orig = btn.textContent;
+    btn.textContent = '✅ Full script copied + name added';
+    setTimeout(() => {
+        btn.textContent = orig;
+        // Helpful hint
+        const hint = document.createElement('div');
+        hint.className = 'text-[9px] text-emerald-400 mt-1';
+        hint.textContent = 'Full script is in your clipboard. After saving this monitor, use the "Scripts" button on its card to upload the complete file.';
+        btn.parentElement.appendChild(hint);
+        setTimeout(() => hint.remove(), 6000);
+    }, 1600);
+}
+</script>
+{% endblock %}

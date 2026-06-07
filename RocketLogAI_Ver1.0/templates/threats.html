@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Threats • RocketLogAI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">All Recorded Threats</h1>
+<p class="text-xs text-zinc-400 mb-4">
+    The <strong>Device</strong> column now shows the manufacturer detected from the MAC address (when available). 
+    This helps you quickly understand what kind of hardware is involved and whether its behavior looks typical for that vendor.
+</p>
+
+<div class="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+<table class="w-full text-sm">
+    <thead class="bg-zinc-950 text-zinc-400 text-xs">
+        <tr>
+            <th class="text-left px-4 py-3">Time</th>
+            <th class="text-left px-4 py-3">Sev</th>
+            <th class="text-left px-4 py-3">Risk</th>
+            <th class="text-left px-4 py-3">Device</th>
+            <th class="text-left px-4 py-3">Description</th>
+            <th class="text-left px-4 py-3">Host/App</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-zinc-800">
+    {% for t in threats %}
+    <tr class="hover:bg-zinc-950">
+        <td class="px-4 py-3 font-mono text-xs text-zinc-400">{{ t.created_at[:19] }}</td>
+        <td class="px-4 py-3"><span class="font-mono text-xs {{ 'text-red-400' if t.severity in ['critical','high'] else 'text-yellow-400' }}">{{ t.severity }}</span></td>
+        <td class="px-4 py-3 text-xs">
+            {% if t.device_risk %}
+            <span class="px-1.5 py-0.5 rounded {{ 'bg-red-900 text-red-300' if t.device_risk > 70 else 'bg-amber-900 text-amber-300' if t.device_risk > 50 else 'bg-emerald-900 text-emerald-300' }}" title="{{ t.device_name or '' }} ({{ t.device_trust or 'normal' }})">
+                {{ t.device_risk }}
+            </span>
+            {% else %}<span class="text-zinc-600">-</span>{% endif %}
+        </td>
+        <td class="px-4 py-3 text-xs">
+            {% if t.new_device %}
+                <span class="inline-block mb-0.5 px-1.5 py-px rounded bg-sky-900 text-sky-300 text-[9px] font-semibold">NEW</span><br>
+            {% endif %}
+            {% if t.device_vendor_icon or t.device_vendor %}
+                <span class="inline-flex items-center gap-1">
+                    {% if t.device_vendor_icon %}<span>{{ t.device_vendor_icon }}</span>{% endif %}
+                    <span class="font-medium text-zinc-300">{{ t.device_vendor or t.device_name or '-' }}</span>
+                </span>
+            {% elif t.device_name %}
+                <span class="text-zinc-400">{{ t.device_name }}</span>
+            {% else %}
+                <span class="text-zinc-600">-</span>
+            {% endif %}
+        </td>
+        <td class="px-4 py-3 text-zinc-200">
+            {{ t.description }}
+            {% if t.advice %}
+            <div class="text-[10px] text-amber-400 mt-1">→ {{ t.advice[0] }}</div>
+            {% endif %}
+        </td>
+        <td class="px-4 py-3 text-xs text-zinc-400">{{ t.hostname or '-' }} / {{ t.appname or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="px-4 py-8 text-center text-zinc-500">No threats yet.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

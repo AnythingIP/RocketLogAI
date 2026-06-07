@@ -1,0 +1,447 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Monitors{% endblock %}
+
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">Service Monitors</h1>
+        <p class="text-zinc-400 mt-1">Deep health checks (not just ports)</p>
+    </div>
+    <div class="flex gap-2">
+        <button onclick="refreshFromConfig()" 
+                class="px-3 py-1.5 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-600">Refresh from config.yaml</button>
+        <a href="/" class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">← Dashboard</a>
+    </div>
+</div>
+
+<!-- Geo Status Widget -->
+<div id="geo-status" class="mb-6 p-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 text-sm flex items-center gap-4">
+    <div class="font-semibold">Geo Status:</div>
+    <div id="geo-status-text" class="text-zinc-400">Loading...</div>
+    <button onclick="loadGeoStatus(true)" class="ml-auto text-xs px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700">Refresh (force reload)</button>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Monitors list + Add form -->
+    <div class="lg:col-span-2">
+        <div class="section-card rounded-3xl p-6 mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold">Configured Monitors</h2>
+                <button onclick="showAddForm()" 
+                        class="px-4 py-1.5 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white">+ Add Monitor</button>
+            </div>
+            <div id="monitors-list" class="space-y-3">
+                <div class="text-zinc-500">Loading monitors...</div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Form (hidden by default) -->
+        <div id="monitor-form-card" class="section-card rounded-3xl p-6 hidden">
+            <h3 id="form-title" class="text-lg font-semibold mb-4">Add New Monitor</h3>
+            <form id="monitor-form" onsubmit="saveMonitor(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input type="hidden" id="form-original-name">
+                
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Name</label>
+                    <input id="form-name" type="text" required class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Host / IP</label>
+                    <input id="form-host" type="text" required class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Type</label>
+                    <select id="form-type" onchange="applyDefaultPort()" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        <option value="tcp">tcp</option>
+                        <option value="http">http</option>
+                        <option value="https">https</option>
+                        <option value="ssh_version">ssh_version</option>
+                        <option value="ping">ping</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Port</label>
+                    <input id="form-port" type="number" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Path (for http)</label>
+                    <input id="form-path" type="text" value="/" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Expected String (optional)</label>
+                    <input id="form-expected" type="text" placeholder="e.g. OpenSSH_9.6 or MyApp v2.8" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Severity</label>
+                    <select id="form-severity" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                        <option value="low">low</option>
+                        <option value="medium" selected>medium</option>
+                        <option value="high">high</option>
+                        <option value="critical">critical</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Remediation Action</label>
+                    <input id="form-remediation" type="text" placeholder="update_ssh" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1">Interval (seconds)</label>
+                    <input id="form-interval" type="number" value="300" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div class="flex items-end">
+                    <label class="flex items-center gap-2 text-sm">
+                        <input id="form-enabled" type="checkbox" checked class="accent-emerald-500">
+                        Enabled
+                    </label>
+                </div>
+
+                <div class="md:col-span-2 flex gap-3 mt-2">
+                    <button type="submit" class="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Save Monitor</button>
+                    <button type="button" onclick="hideAddForm()" class="px-6 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Recent Results -->
+    <div>
+        <div class="section-card rounded-3xl p-6">
+            <h2 class="text-lg font-semibold mb-4">Recent Check Results</h2>
+            <div id="recent-results" class="space-y-2 text-sm max-h-[520px] overflow-auto">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let editingName = null;
+
+async function loadMonitors() {
+    const res = await fetch('/api/monitors');
+    const data = await res.json();
+
+    const listEl = document.getElementById('monitors-list');
+    listEl.innerHTML = '';
+
+    if (!data.monitors || data.monitors.length === 0) {
+        listEl.innerHTML = '<div class="text-zinc-500">No monitors yet. Use the button above to add some (or define in config.yaml).</div>';
+    } else {
+        data.monitors.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3';
+            const enabledBadge = m.enabled ? '<span class="text-emerald-400 text-xs">●</span>' : '<span class="text-zinc-600 text-xs">○</span>';
+            div.innerHTML = `
+                <div class="min-w-0">
+                    <div class="font-medium flex items-center gap-2">${enabledBadge} ${m.name}</div>
+                    <div class="text-xs text-zinc-500 truncate">${m.host}${m.port ? ':' + m.port : ''} • ${m.type}</div>
+                    ${m.expected ? `<div class="text-[10px] text-amber-400/80 mt-0.5">expects: ${m.expected}</div>` : ''}
+                </div>
+                <div class="flex gap-1.5 flex-shrink-0 flex-wrap">
+                    <button onclick="runMonitor('${m.name}')" class="px-2.5 py-1 text-xs rounded-lg bg-emerald-950 hover:bg-emerald-900 text-emerald-300">Run</button>
+                    <button onclick="askAIForRemediation('${m.name}', '${m.type || ''}', '${m.host || ''}')" class="px-2.5 py-1 text-xs rounded-lg bg-purple-950 hover:bg-purple-900 text-purple-300">Ask AI</button>
+                    <button onclick="editMonitor(${JSON.stringify(m).replace(/"/g, '&quot;')})" class="px-2.5 py-1 text-xs rounded-lg bg-zinc-800 hover:bg-zinc-700">Edit</button>
+                    <button onclick="deleteMonitor('${m.name}')" class="px-2.5 py-1 text-xs rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300">Del</button>
+                    ${m.remediation_action ? `<button onclick="remediateMonitor('${m.name}', '${m.remediation_action}')" class="px-2.5 py-1 text-xs rounded-lg bg-orange-950 hover:bg-orange-900 text-orange-300">Fix</button>` : ''}
+                    <button onclick="showScriptManager('${m.name}')" class="px-2.5 py-1 text-xs rounded-lg bg-sky-950 hover:bg-sky-900 text-sky-300">Scripts</button>
+                </div>
+            `;
+            listEl.appendChild(div);
+        });
+    }
+
+    // Recent results
+    const resultsEl = document.getElementById('recent-results');
+    resultsEl.innerHTML = '';
+    (data.recent_results || []).slice(0, 15).forEach(r => {
+        const ok = r.success == 1;
+        const row = document.createElement('div');
+        row.className = `flex justify-between px-3 py-2 rounded-xl text-xs ${ok ? 'bg-emerald-950/30' : 'bg-red-950/30'}`;
+        row.innerHTML = `
+            <div class="truncate pr-2">
+                <span class="font-mono">${r.monitor_name}</span><br>
+                <span class="text-[10px] text-zinc-400">${r.message}</span>
+            </div>
+            <div class="text-right flex-shrink-0">
+                ${ok ? '✅' : '❌'}<br>
+                <span class="text-zinc-500">${r.checked_at ? r.checked_at.slice(11,16) : ''}</span>
+            </div>
+        `;
+        resultsEl.appendChild(row);
+    });
+}
+
+function showAddForm() {
+    document.getElementById('monitor-form-card').classList.remove('hidden');
+    document.getElementById('form-title').textContent = 'Add New Monitor';
+    document.getElementById('monitor-form').reset();
+    document.getElementById('form-original-name').value = '';
+    editingName = null;
+    // Default to a sensible first type
+    document.getElementById('form-type').value = 'https';
+    setTimeout(applyDefaultPort, 50);
+}
+
+function hideAddForm() {
+    document.getElementById('monitor-form-card').classList.add('hidden');
+}
+
+function applyDefaultPort() {
+    const type = document.getElementById('form-type').value;
+    const portInput = document.getElementById('form-port');
+    const defaults = { ssh_version: 22, https: 443, http: 80, tcp: 22, ping: 0 };
+    if (defaults[type] !== undefined && (!portInput.value || portInput.value === '0')) {
+        portInput.value = defaults[type];
+        portInput.classList.add('border-emerald-700');
+        setTimeout(() => portInput.classList.remove('border-emerald-700'), 1200);
+    }
+}
+
+function editMonitor(m) {
+    document.getElementById('monitor-form-card').classList.remove('hidden');
+    document.getElementById('form-title').textContent = 'Edit Monitor';
+    editingName = m.name;
+
+    document.getElementById('form-original-name').value = m.name;
+    document.getElementById('form-name').value = m.name;
+    document.getElementById('form-host').value = m.host || '';
+    document.getElementById('form-type').value = m.type || 'tcp';
+    document.getElementById('form-port').value = m.port || '';
+    document.getElementById('form-path').value = m.path || '/';
+    document.getElementById('form-expected').value = m.expected || '';
+    document.getElementById('form-severity').value = m.severity || 'medium';
+    document.getElementById('form-remediation').value = m.remediation_action || '';
+    document.getElementById('form-interval').value = m.interval_seconds || 300;
+    document.getElementById('form-enabled').checked = !!m.enabled;
+
+    // Apply visual default hint if the port looks empty for the loaded type
+    setTimeout(applyDefaultPort, 30);
+}
+
+async function saveMonitor(e) {
+    e.preventDefault();
+    const original = document.getElementById('form-original-name').value;
+    const payload = {
+        name: document.getElementById('form-name').value,
+        host: document.getElementById('form-host').value,
+        type: document.getElementById('form-type').value,
+        port: parseInt(document.getElementById('form-port').value) || null,
+        path: document.getElementById('form-path').value,
+        expected: document.getElementById('form-expected').value || null,
+        severity: document.getElementById('form-severity').value,
+        remediation_action: document.getElementById('form-remediation').value || null,
+        interval_seconds: parseInt(document.getElementById('form-interval').value) || 300,
+        enabled: document.getElementById('form-enabled').checked,
+    };
+
+    let url = '/api/monitors';
+    let method = 'POST';
+    if (original) {
+        url = `/api/monitors/${encodeURIComponent(original)}`;
+        method = 'PUT';
+    }
+
+    const res = await fetch(url, {
+        method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+        hideAddForm();
+        loadMonitors();
+    } else {
+        alert('Save failed: ' + (data.error || 'unknown'));
+    }
+}
+
+async function deleteMonitor(name) {
+    if (!confirm(`Delete monitor "${name}" and all its history?`)) return;
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}`, {method: 'DELETE'});
+    const data = await res.json();
+    if (data.success) loadMonitors();
+    else alert('Delete failed');
+}
+
+async function runMonitor(name) {
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/run`, {method: 'POST'});
+    const data = await res.json();
+    alert(data.success ? 'Check completed' : 'Failed: ' + (data.error || ''));
+    loadMonitors();
+}
+
+async function remediateMonitor(name, action) {
+    if (!confirm(`Run remediation "${action}" for ${name}?`)) return;
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/remediate?action=${action}`, {method: 'POST'});
+    const data = await res.json();
+    alert(JSON.stringify(data.result, null, 2));
+    loadMonitors();
+}
+
+async function loadGeoStatus(force = false) {
+    try {
+        const url = force ? '/api/geo/status?refresh=1' : '/api/geo/status';
+        const res = await fetch(url);
+        const data = await res.json();
+        const el = document.getElementById('geo-status-text');
+        if (data.available) {
+            el.innerHTML = `<span class="text-emerald-400">✓ Active</span> — ${data.db_path || 'unknown'} <span class="text-zinc-500">(${data.cached_ips || 0} cached IPs)</span>`;
+            document.getElementById('geo-status').classList.add('border-emerald-900');
+        } else {
+            el.innerHTML = `<span class="text-red-400">✗ Not active</span> — ${data.message}. Place GeoLite2-City.mmdb in <code>/Volumes/logsentinel</code> (or ~/.logsentinel) then click Refresh. <a href="https://www.maxmind.com/en/geolite2/signup" target="_blank" class="underline">Get GeoLite2</a> + <code>pip install geoip2</code>`;
+            document.getElementById('geo-status').classList.add('border-red-900');
+        }
+    } catch (e) {
+        document.getElementById('geo-status-text').textContent = 'Failed to load geo status';
+    }
+}
+
+async function refreshFromConfig() {
+    if (!confirm('Re-import all monitors from config.yaml into the database? Existing web-edited monitors with the same name will be overwritten.')) return;
+    const res = await fetch('/api/monitors/refresh-from-config', {method: 'POST'});
+    const data = await res.json();
+    if (data.success) {
+        alert(`Synced ${data.synced} monitors from config.`);
+        loadMonitors();
+    } else {
+        alert('Refresh failed: ' + (data.error || 'unknown'));
+    }
+}
+
+// === New AI + Script features (added for deep https + smart remediation) ===
+
+async function askAIForRemediation(name, type, host) {
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/run`, { method: 'POST' });
+    const runData = await res.json();
+
+    const ctx = {
+        name, type, host,
+        message: runData.result?.message || '',
+        details: runData.result?.details || {},
+    };
+
+    const suggestRes = await fetch('/api/remediation/suggest', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(ctx)
+    });
+    const s = await suggestRes.json();
+
+    let html = `<div class="text-sm space-y-3">`;
+    (s.suggestions || []).forEach(sug => {
+        html += `<div class="border border-zinc-800 rounded-xl p-3">
+            <div class="font-semibold text-emerald-300">${sug.title}</div>
+            <div class="text-xs text-zinc-400 mt-0.5">${sug.action}</div>
+            <ul class="mt-2 text-xs list-disc pl-4 text-zinc-300">${(sug.steps || []).map(st => `<li>${st}</li>`).join('')}</ul>
+        </div>`;
+    });
+    if (s.llm_additions) {
+        html += `<div class="mt-3 p-3 bg-purple-950/40 rounded-xl text-xs"><b>AI additions:</b><br>${s.llm_additions}</div>`;
+    }
+    html += `</div>`;
+
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-zinc-950 border border-zinc-700 rounded-3xl p-6 max-w-2xl w-full mx-4">
+            <div class="flex justify-between mb-4">
+                <div class="font-semibold text-lg">AI Remediation Suggestions — ${name}</div>
+                <button class="text-zinc-400 hover:text-white" onclick="this.closest('.fixed').remove()">✕</button>
+            </div>
+            ${html}
+            <div class="mt-4 text-[10px] text-zinc-500">These are suggestions only. All execution (scripts, commands, cert changes) requires explicit human confirmation.</div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+let currentScriptMonitor = null;
+
+async function showScriptManager(name) {
+    currentScriptMonitor = name;
+    const res = await fetch(`/api/monitors/${encodeURIComponent(name)}/remediation-script`);
+    const data = await res.json();
+
+    let html = `<div class="space-y-4">`;
+    if (!data.scripts || data.scripts.length === 0) {
+        html += `<div class="text-zinc-400">No scripts attached yet. Upload one below (max 1 MB).</div>`;
+    } else {
+        data.scripts.forEach(sc => {
+            html += `<div class="border border-zinc-800 rounded-xl p-3 text-sm">
+                <div class="font-mono text-emerald-300">${sc.filename}</div>
+                <div class="text-[10px] text-zinc-500">${sc.size} bytes — uploaded ${sc.meta?.uploaded_at?.slice(0,16) || ''}</div>
+                <pre class="mt-2 max-h-40 overflow-auto bg-black/50 p-2 text-xs rounded">${sc.content_preview}</pre>
+                <div class="mt-2 flex gap-2">
+                    <button onclick="runAttachedScript('${name}', '${sc.filename}')" class="px-3 py-1 text-xs bg-sky-900 rounded">Run (preview first)</button>
+                </div>
+            </div>`;
+        });
+    }
+
+    html += `<div class="mt-4 pt-4 border-t border-zinc-800">
+        <label class="block text-xs mb-1">Upload new script (.sh / .py / .txt, ≤1MB)</label>
+        <input type="file" id="script-upload" class="text-sm">
+        <button onclick="uploadScriptForCurrentMonitor()" class="mt-2 px-4 py-1.5 text-sm rounded bg-emerald-700">Upload</button>
+    </div></div>`;
+
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/70 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-zinc-950 border border-zinc-700 rounded-3xl p-6 max-w-3xl w-full mx-4">
+            <div class="flex justify-between mb-4">
+                <div class="font-semibold text-lg">Remediation / Investigation Scripts — ${name}</div>
+                <button class="text-zinc-400 hover:text-white" onclick="this.closest('.fixed').remove()">✕</button>
+            </div>
+            ${html}
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+async function uploadScriptForCurrentMonitor() {
+    if (!currentScriptMonitor) return;
+    const input = document.getElementById('script-upload');
+    if (!input || !input.files.length) { alert('Choose a file first'); return; }
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+
+    const res = await fetch(`/api/monitors/${encodeURIComponent(currentScriptMonitor)}/remediation-script`, {
+        method: 'POST',
+        body: fd
+    });
+    const j = await res.json();
+    if (j.success) {
+        alert('Script uploaded. Re-open the Scripts dialog to see it.');
+        document.querySelectorAll('.fixed').forEach(el => el.remove());
+        showScriptManager(currentScriptMonitor);
+    } else {
+        alert('Upload failed: ' + (j.error || 'unknown'));
+    }
+}
+
+async function runAttachedScript(name, filename) {
+    if (!confirm(`Preview and then run "${filename}" for ${name}? This executes on the LogSentinel host.`)) return;
+
+    // Fetch preview
+    const previewRes = await fetch(`/api/monitors/${encodeURIComponent(name)}/remediation-script`);
+    const p = await previewRes.json();
+    const script = (p.scripts || []).find(s => s.filename === filename);
+    if (!script) { alert('Script not found'); return; }
+
+    const confirmed = confirm(`LAST CHANCE — This will actually execute the script below on the server.\n\n${script.content_preview.slice(0,600)}\n\nProceed?`);
+    if (!confirmed) return;
+
+    const execRes = await fetch(`/api/monitors/${encodeURIComponent(name)}/run-script`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ script_filename: filename, confirmed: true })
+    });
+    const ex = await execRes.json();
+    alert('Execution result:\n' + JSON.stringify(ex.result || ex, null, 2));
+    loadMonitors();
+}
+
+loadMonitors();
+loadGeoStatus();
+setInterval(loadMonitors, 30000);
+setInterval(loadGeoStatus, 60000);
+</script>
+{% endblock %}

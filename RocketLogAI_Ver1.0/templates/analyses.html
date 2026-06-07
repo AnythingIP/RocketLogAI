@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}LLM Analyses • RocketLogAI{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-6">LLM Analysis History</h1>
+
+<div class="space-y-3">
+{% for a in analyses %}
+<a href="/analysis/{{ a.id }}" class="block bg-zinc-900 hover:bg-zinc-800 rounded-2xl p-5 border border-zinc-800">
+    <div class="flex items-center justify-between">
+        <div>
+            <span class="font-medium">Analysis #{{ a.id }}</span>
+            <span class="ml-3 text-sm text-zinc-500">{{ a.started_at[:19] }}</span>
+        </div>
+        <div class="text-xs bg-zinc-950 px-2 py-px rounded">{{ a.model or 'local' }}</div>
+    </div>
+    <div class="mt-2 text-sm">{{ a.summary }}</div>
+    <div class="text-xs mt-1 text-emerald-400">{{ a.threats_found }} threats</div>
+</a>
+{% else %}
+<div class="text-zinc-500">No analyses stored yet.</div>
+{% endfor %}
+</div>
+{% endblock %}

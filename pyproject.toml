@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "logsentinel"
+version = "1.4.0-phase4"
+description = "AI-powered syslog server and security analyzer using local LLMs (LM Studio compatible)"
+readme = { text = "RocketLogAI - AI-powered syslog security analyzer", content-type = "text/markdown" }
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "LogSentinel"}]
+dependencies = [
+    "pyyaml>=6.0",
+    "openai>=1.30.0",
+    "rich>=13.0.0",
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "jinja2>=3.1.0",
+    "itsdangerous>=2.0",   # required for SessionMiddleware (proper login)
+    "ldap3>=2.9",          # Windows Active Directory / LDAP domain authentication
+    "python-multipart>=0.0.6",  # required for request.form() on login, config, etc.
+    "geoip2>=4.8",         # optional but recommended for offline IP geolocation
+    "pyotp>=2.9",          # TOTP / 2FA with Microsoft Authenticator etc.
+    "qrcode>=7.4",         # QR codes for 2FA setup
+    "bcrypt>=4.0.0",       # secure password hashing for local admin (replaces plaintext in config.yaml)
+    "requests>=2.31.0",    # used for online geo IP fallback when local MaxMind DB is incomplete
+    "cryptography>=42.0",  # for reversible encryption of service account / Entra secrets + cert generation
+]
+ai = [
+    "open-interpreter>=0.2.0",  # Phase 3: Powerful natural language operator (AI Assistant uses this as primary execution backend, heavily safety-wrapped)
+]
+full = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "jinja2>=3.1.0",
+    "cryptography>=42.0",
+    "open-interpreter>=0.2.0",
+    # Note: "web" extra is what you normally want for the dashboard + LLM features.
+    # Use `pip install -e ".[web,ai]"` (or ".[full]") for the complete experience including conversational AI Operator and advanced auth.
+]
+
+[project.scripts]
+logsentinel = "logsentinel.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["logsentinel"]
+# ai_assistant subpackage (Phase 3 powerful controller) is automatically included as it has __init__.py
+include = ["logsentinel/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
