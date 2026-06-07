@@ -79,34 +79,18 @@
         <div id="progress-detail" class="text-[10px] text-zinc-500 mt-1">Gathering logs, threats, monitor results and activity for the window...</div>
     </div>
 
-    <!-- The Briefing (rendered as the crew's opening message) -->
-    <div id="briefing-card" class="section-card rounded-3xl p-6 mb-6 hidden">
-        <div class="flex items-center gap-2 mb-3">
-            <span class="text-emerald-400">🧠</span>
-            <span class="font-semibold">The Crew's Report</span>
-            <span id="briefing-meta" class="text-xs text-zinc-500 ml-auto"></span>
-        </div>
-        <div id="briefing-narrative" class="prose prose-invert text-sm leading-relaxed whitespace-pre-wrap"></div>
-
-        <div id="briefing-highlights" class="mt-4"></div>
-
-        <div class="mt-4 text-[10px] text-zinc-500">
-            This recap is grounded in the actual data RocketLogAI recorded. Ask anything about the day — what happened, why, who was involved, what we should do about it.
-        </div>
-    </div>
-
-    <!-- Chat with the crew -->
-    <div class="section-card rounded-3xl p-6">
+    <!-- Chat with the crew (AI Assistant chat panel) - MOVED TO TOP per Phase 1 -->
+    <div class="section-card rounded-3xl p-6 mb-6">
         <div class="flex items-center justify-between mb-3">
             <div class="font-medium flex items-center gap-2">
-                <span>💬</span> Talk to the Crew
+                <span>💬</span> Talk to the Crew (AI Assistant)
             </div>
             <button onclick="clearCurrentChat()" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Clear chat for this briefing</button>
             <button onclick="exportCurrentBriefing()" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Export .md</button>
         </div>
 
-        <div id="chat-history" class="min-h-[220px] max-h-[420px] overflow-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-3 text-sm mb-3">
-            <div class="text-zinc-500 text-xs">The briefing above is the crew's opening take. Ask follow-ups like "tell me more about the disk thing", "who was brute forcing us", "draft a script for the flapping monitor", "what was the weirdest thing on Tuesday?"</div>
+        <div id="chat-history" class="min-h-[180px] max-h-[320px] overflow-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-3 text-sm mb-3">
+            <div class="text-zinc-500 text-xs">Generate or load a briefing with the controls above (the 24h summary/readout will appear below). Chat here for follow-ups like "tell me more about the disk thing", "who was brute forcing us", "draft a script for the flapping monitor".</div>
         </div>
 
         <div class="flex gap-2">
@@ -117,6 +101,22 @@
                     class="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">Send</button>
         </div>
         <div class="text-[10px] text-zinc-500 mt-2">The crew stays grounded in the actual data for this window. Every turn is logged in Server Activity.</div>
+    </div>
+
+    <!-- The Briefing / 24h summary/readout (kept BELOW the chat per Phase 1) -->
+    <div id="briefing-card" class="section-card rounded-3xl p-6 mb-6 hidden">
+        <div class="flex items-center gap-2 mb-3">
+            <span class="text-emerald-400">🧠</span>
+            <span class="font-semibold">The Crew's Report (24h Summary)</span>
+            <span id="briefing-meta" class="text-xs text-zinc-500 ml-auto"></span>
+        </div>
+        <div id="briefing-narrative" class="prose prose-invert text-sm leading-relaxed whitespace-pre-wrap"></div>
+
+        <div id="briefing-highlights" class="mt-4"></div>
+
+        <div class="mt-4 text-[10px] text-zinc-500">
+            This recap is grounded in the actual data RocketLogAI recorded. (Chat panel is above.)
+        </div>
     </div>
 
     <!-- Past briefings modal-ish area -->
@@ -401,7 +401,7 @@ async function loadChatHistory() {
             historyEl.appendChild(d);
         });
         if (!data.messages || !data.messages.length) {
-            historyEl.innerHTML = '<div class="text-zinc-500 text-xs">The briefing above is the opening report. Fire away with questions.</div>';
+            historyEl.innerHTML = '<div class="text-zinc-500 text-xs">The 24h summary is below. Ask anything about this window (chat stays grounded in the briefing data).</div>';
         }
         historyEl.scrollTop = historyEl.scrollHeight;
     } catch (e) {

@@ -46,7 +46,8 @@
                     <a href="/devices/{{ d.ip }}" class="font-semibold text-emerald-400 hover:underline text-lg leading-tight">{{ d.ha_name or d.ip or 'Unknown Device' }}</a>
                     <div class="font-mono text-[10px] text-zinc-500 mt-0.5">{{ d.ip or '-' }}</div>
                 </div>
-                <div class="text-3xl flex-shrink-0">{{ d.vendor_icon or '❓' }}</div>
+                {% set icon = d.display_icon or d.vendor_icon or '❔' %}
+                <div class="text-3xl flex-shrink-0 {{ 'text-zinc-400' if icon in ['❓','❔','?'] else '' }}">{{ icon }}</div>
             </div>
 
             <!-- Vendor + Rich Details (from new DBs) -->

@@ -68,7 +68,10 @@
 
             <div class="mt-6 text-center text-xs text-zinc-500">
                 {% if domain_enabled %}
-                Domain login is primary. 
+                Active Directory / Entra ID login is primary (if configured in /config). 
+                {% endif %}
+                {% if entra_enabled %}
+                Microsoft Entra ID login enabled.
                 {% endif %}
                 Default local credentials (if allowed): <span class="font-mono text-emerald-400">admin / admin</span>
             </div>

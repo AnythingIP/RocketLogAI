@@ -79,7 +79,8 @@
             <div class="flex justify-between">
                 <span class="text-zinc-400">Manufacturer</span>
                 <span>
-                    {% if device.vendor_icon %}<span class="mr-1">{{ device.vendor_icon }}</span>{% endif %}
+                    {% set vicon = device.display_icon or device.vendor_icon or '' %}
+                    {% if vicon %}<span class="mr-1 {{ 'text-zinc-400' if vicon in ['❓','❔','?'] else '' }}">{{ vicon }}</span>{% endif %}
                     <span class="font-medium">{{ device.vendor }}</span>
                     {% if device.device_category %}<span class="text-xs text-zinc-500">({{ device.device_category }})</span>{% endif %}
                 </span>

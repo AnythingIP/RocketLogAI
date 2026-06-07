@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -19,51 +19,43 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # Virtual environments
-.venv
+.venv/
 venv/
 ENV/
 env/
-.conda/
 
-# Runtime data, secrets, and local state (CRITICAL - never commit)
+# Data and runtime
 data/
+*.log
+*.log.*
 *.db
-*.db-shm
-*.db-wal
-logsentinel.log
-errors.txt
-config.yaml
-session_secret.txt
-ssl/
-certs/
-
-# Large optional data files (users download these)
+*.sqlite
 GeoLite2-*.mmdb
-GeoLite2-City.mmdb
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Secrets and config
+*.pem
+*.key
+session_secret.txt
+config.yaml
+.env
+*.secret
 
-# IDE / editor
+# IDE and OS
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.DS_Store
+Thumbs.db
 
-# Installer / release artifacts (we publish via GitHub Releases)
+# Installer artifacts
+dist/RocketLogAI-*-Installer/
 *.tar.gz
-RocketLogAI-*-Installer/
-dist/
 
-# Python packaging
-*.whl
+# Misc
+.pytest_cache/
+.coverage
+htmlcov/

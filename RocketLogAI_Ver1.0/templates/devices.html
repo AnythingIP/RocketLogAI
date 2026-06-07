@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Devices{% endblock %}
+
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">Device Registry</h1>
+        <p class="text-zinc-400 mt-1">
+    Everything RocketLogAI knows about your devices + learned behavior. 
+    We now also look up the manufacturer from the MAC address so the AI can judge whether the device is behaving like a typical example of that hardware.
+</p>
+    </div>
+    <div class="flex gap-2">
+        <button onclick="learnAllBaselines()" class="px-4 py-2 text-sm rounded-xl bg-emerald-900/70 hover:bg-emerald-800 text-emerald-300 border border-emerald-800" title="Scans recent threats and builds normal behavior profiles per device. This powers AI trust decisions.">Learn baselines for all (last 7d)</button>
+        <a href="/automation" class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">Automation Rules →</a>
+    </div>
+</div>
+
+<div class="section-card rounded-3xl p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold">Known Devices ({{ devices|length }})</h2>
+        
+        <!-- Category Filter -->
+        <div class="flex flex-wrap gap-1 text-xs" id="category-filters">
+            <button onclick="filterDevices('all')" class="px-2 py-0.5 rounded-full bg-zinc-800 hover:bg-zinc-700 active-filter" data-filter="all">All</button>
+            {% set categories = devices | map(attribute='device_category') | select('defined') | unique | list %}
+            {% for cat in categories %}
+                {% if cat %}
+                <button onclick="filterDevices('{{ cat }}')" class="px-2 py-0.5 rounded-full bg-zinc-800 hover:bg-zinc-700" data-filter="{{ cat }}">
+                    {{ cat }}
+                </button>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    
+    {% if devices %}
+    <div class="overflow-x-auto">
+        <table id="device-table" class="w-full text-sm">
+            <thead>
+                <tr class="text-left border-b border-zinc-700 text-zinc-400">
+                    <th class="pb-2 pr-4">Device</th>
+                    <th class="pb-2 pr-4">IP / MAC</th>
+                    <th class="pb-2 pr-4">Type / Area</th>
+                    <th class="pb-2 pr-4">Trust / Risk</th>
+                    <th class="pb-2 pr-4">Last Seen</th>
+                    <th class="pb-2">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in devices %}
+                <tr class="border-b border-zinc-800 hover:bg-zinc-950">
+                    <td class="py-3 pr-4 font-medium">
+                        <a href="/devices/{{ d.ip }}" class="text-emerald-400 hover:underline">{{ d.ha_name or d.ip or 'Unknown' }}</a>
+                    </td>
+                    <td class="py-3 pr-4 font-mono text-xs">
+                        <a href="/devices/{{ d.ip }}" class="hover:underline">{{ d.ip or '-' }}</a><br>{{ d.mac or '-' }}
+                    </td>
+                    <td class="py-3 pr-4 text-xs">
+                        {% if d.vendor_icon %}
+                            <span class="mr-1">{{ d.vendor_icon }}</span>
+                        {% endif %}
+                        {{ d.device_category or d.ha_device_type or '-' }}
+                        {% if d.ha_area %}· {{ d.ha_area }}{% endif %}
+                    </td>
+                    <td class="py-3 pr-4">
+                        <span class="px-2 py-0.5 text-xs rounded-full 
+                            {% if d.trust_level == 'trusted' %}bg-emerald-900 text-emerald-300
+                            {% elif d.trust_level == 'untrusted' %}bg-red-900 text-red-300
+                            {% elif d.trust_level == 'critical' %}bg-orange-900 text-orange-300
+                            {% else %}bg-zinc-700{% endif %}">
+                            {{ d.trust_level or 'normal' }}
+                        </span>
+                        {% if d.risk_score %}
+                        <span class="text-[10px] text-zinc-500 ml-1">({{ d.risk_score }})</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 pr-4 text-xs text-zinc-400">{{ d.last_seen[:16] if d.last_seen else '-' }}</td>
+                    <td class="py-3">
+                        <div class="flex gap-1 text-xs">
+                            <button onclick="learnBaseline('{{ d.ip }}'); event.stopImmediatePropagation();" class="px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded">Learn Normal</button>
+                            <button onclick="quickAction('{{ d.ip }}', 'ignore_https'); event.stopImmediatePropagation();" class="px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 rounded">Ignore HTTPS</button>
+                            <button onclick="quickAction('{{ d.ip }}', 'mark_trusted'); event.stopImmediatePropagation();" class="px-2 py-0.5 bg-emerald-900 hover:bg-emerald-800 rounded text-emerald-300">Trust</button>
+                            <a href="/devices/{{ d.ip }}" class="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 rounded border border-zinc-700 text-zinc-300">Details →</a>
+                        </div>
+                        {% if d.normal_behaviors %}
+                        <div class="text-[10px] text-emerald-400 mt-1">
+                            Learned: {{ (d.normal_behaviors.common_destination_ports or []) | length }} ports
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-zinc-400">No devices recorded yet. Devices will appear here as RocketLogAI sees them in threats or through Home Assistant.</p>
+    {% endif %}
+</div>
+
+<script>
+async function learnBaseline(ip) {
+    if (!confirm('Learn current behavior for ' + ip + ' as normal?')) return;
+    const res = await fetch('/api/devices/' + encodeURIComponent(ip) + '/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'learn_baseline'})
+    });
+    const data = await res.json();
+    alert(data.message || 'Baseline learned');
+    location.reload();
+}
+
+async function quickAction(ip, action) {
+    const res = await fetch('/api/devices/' + encodeURIComponent(ip) + '/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: action})
+    });
+    const data = await res.json();
+    alert(data.message || 'Action recorded');
+    location.reload();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Attach data-category to rows for client-side filtering
+    const rows = document.querySelectorAll('#device-table tbody tr');
+    rows.forEach(row => {
+        const catCell = row.querySelector('td:nth-child(3)');
+        if (catCell) {
+            row.dataset.category = catCell.textContent.trim();
+        }
+    });
+});
+
+let currentFilter = 'all';
+
+function filterDevices(category) {
+    currentFilter = category;
+
+    document.querySelectorAll('#category-filters button').forEach(btn => {
+        btn.classList.remove('bg-emerald-700', 'text-white');
+        btn.classList.add('bg-zinc-800');
+        if ((category === 'all' && btn.dataset.filter === 'all') || 
+            (btn.dataset.filter === category)) {
+            btn.classList.add('bg-emerald-700', 'text-white');
+            btn.classList.remove('bg-zinc-800');
+        }
+    });
+
+    document.querySelectorAll('#device-table tbody tr').forEach(row => {
+        if (category === 'all') {
+            row.style.display = '';
+        } else {
+            const cat = row.dataset.category || '';
+            row.style.display = (cat === category) ? '' : 'none';
+        }
+    });
+}
+
+async function learnAllBaselines() {
+    if (!confirm('Scan recent threats and learn normal behavior baselines for every device seen in the last 7 days? This may take a moment.')) return;
+    const btns = document.querySelectorAll('button');
+    const originalText = event?.target?.textContent || '';
+    const res = await fetch('/api/devices/learn-all', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({days: 7})
+    });
+    const data = await res.json();
+    const s = data.summary || {};
+    alert(`Bulk baseline learning complete.\nDevices processed: ${s.devices_processed || 0}\nBaselines updated: ${s.baselines_updated || 0}`);
+    location.reload();
+}
+</script>
+{% endblock %}

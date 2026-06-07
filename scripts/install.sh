@@ -93,8 +93,12 @@ if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt
 fi
 
+# Phase 3/4: Install Open Interpreter (for powerful AI Assistant / conversational operator) + cryptography (for encrypted service account / Entra secrets in advanced auth)
+echo "Installing optional AI + security extras (open-interpreter + cryptography)..."
+pip install open-interpreter cryptography 2>/dev/null || pip install --no-deps open-interpreter cryptography || true
+
 # One more safety pass for common web + security deps
-pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode rich click pyyaml openai geoip2 requests ldap3 python-multipart 2>/dev/null || true
+pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode rich click pyyaml openai geoip2 requests ldap3 python-multipart cryptography 2>/dev/null || true
 
 echo
 echo "[5/5] Creating launcher scripts..."
@@ -121,8 +125,12 @@ echo "  3. Edit config.yaml (especially the llm: section for your model or Micro
 echo "  4. ./start-rocketlogai.sh"
 echo "  5. Open the web UI and change the default admin/admin password immediately"
 echo
-echo "New in v1.3: Daily Briefing (/daily) - the Operator Companion. Chat with the crew about what happened that day/shift, get context-aware scripts, and promote fixes to monitors."
-echo "Also: improved Ollama support + clearer LLM config UI separating local vs cloud."
+echo "New in this build (Phases 1-4):"
+echo "  - Powerful AI Assistant (Open Interpreter backend) - natural English commands like 'deploy Wireshark to these machines' or 'create PowerPoint from today's threats' with safety plans + confirmation."
+echo "  - Advanced Auth & RBAC: Full AD/LDAP (service account + groups), Entra ID, roles (Viewer/Analyst/Operator/Admin) mapped from groups."
+echo "  - Encrypted storage for service/Entra secrets, improved domain test, RBAC enforcement."
+echo "  - Daily Briefing, better devices, sidebar, etc. from earlier phases."
+echo "Install extras with: pip install -e '.[web,ai]' after setup."
 echo
 echo "To run as a systemd service later, see the notes in INSTALL.md"
 echo
