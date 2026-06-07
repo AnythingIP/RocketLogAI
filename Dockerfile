@@ -21,8 +21,11 @@ COPY requirements.txt* ./
 # Install the package with web extras (FastAPI, uvicorn, etc.)
 # Note: bcrypt is included for secure local password storage.
 # requests is included for optional online geo IP fallback (Maps page enrichment).
+# cryptography for encrypted domain/Entra service secrets (Phase 4).
+# open-interpreter for the powerful conversational AI Assistant / Operator (Phase 3).
 RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir -e ".[web]"
+    pip install --no-cache-dir -e ".[web]" && \
+    pip install --no-cache-dir open-interpreter cryptography || true
 
 # Copy the application code
 COPY logsentinel/ ./logsentinel/

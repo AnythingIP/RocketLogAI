@@ -582,28 +582,84 @@ window.syncGeoProvidersToHidden = function(providersOverride) {
         <p class="text-xs text-zinc-500 mt-2">Used as fallback when domain auth is disabled or fails. You can completely disable local login (force domain-only) using the toggle in the Domain section below; use the CLI <code>logsentinel enable-local-login</code> if you ever get locked out.</p>
     </div>
 
-    <!-- Windows Domain / AD -->
+    <!-- Windows Domain / AD (Phase 4 - Full LDAP + RBAC) -->
     <div class="section-card rounded-3xl p-6">
-        <h2 class="font-semibold mb-4 flex items-center gap-2">Windows Domain Authentication (Active Directory)</h2>
+        <h2 class="font-semibold mb-4 flex items-center gap-2">Windows Domain Authentication (Active Directory / LDAP)</h2>
         <div class="flex items-center gap-2 mb-4">
             <input type="checkbox" name="domain_enabled" {% if cfg.web.domain_enabled %}checked{% endif %} class="accent-emerald-500">
-            <span class="text-sm">Enable domain login</span>
+            <span class="text-sm">Enable domain login (LDAP/LDAPS)</span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="text-xs text-zinc-400">Domain Controller / LDAP Server</label>
-                <input name="domain_server" value="{{ cfg.web.domain_server }}" placeholder="dc01.corp.local or ldap://dc01.corp.local" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
+                <input name="domain_server" value="{{ cfg.web.domain_server }}" placeholder="dc01.corp.local or ldaps://dc01.corp.local:636" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
             </div>
             <div>
-                <label class="text-xs text-zinc-400">Base DN</label>
+                <label class="text-xs text-zinc-400">Base DN (e.g. DC=corp,DC=local)</label>
                 <input name="domain_base_dn" value="{{ cfg.web.domain_base_dn }}" placeholder="DC=corp,DC=local" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
             </div>
             <div>
-                <label class="text-xs text-zinc-400">NetBIOS Domain (optional)</label>
+                <label class="text-xs text-zinc-400">NetBIOS / User Domain (optional)</label>
                 <input name="domain_user_domain" value="{{ cfg.web.domain_user_domain }}" placeholder="CORP" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2.5">
             </div>
         </div>
+
+        <!-- Service Account (recommended for group lookup + RBAC) -->
+        <div class="mt-4 p-3 bg-zinc-950 border border-zinc-700 rounded-2xl">
+            <div class="text-xs font-medium text-emerald-300 mb-2">Service Account (for secure group membership lookup - least privilege recommended)</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-zinc-400">Service Account (DN or UPN)</label>
+                    <input name="domain_service_account" value="{{ cfg.web.domain_service_account }}" placeholder="CN=svc-rocketauth,OU=Services,DC=corp,DC=local" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-zinc-400">Service Account Password</label>
+                    <input type="password" name="domain_service_password" value="" placeholder="•••••••• (leave blank to keep existing)" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                    <p class="text-[10px] text-amber-400 mt-0.5">Stored encrypted. Used only for lookup, not user auth.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- LDAPS / TLS -->
+        <div class="mt-3 flex flex-wrap items-center gap-4 text-xs">
+            <label class="flex items-center gap-1.5">
+                <input type="checkbox" name="domain_use_ldaps" {% if cfg.web.domain_use_ldaps %}checked{% endif %} class="accent-emerald-500">
+                <span>Use LDAPS (recommended)</span>
+            </label>
+            <div class="flex-1 min-w-[220px]">
+                <input name="domain_ca_cert" value="{{ cfg.web.domain_ca_cert }}" placeholder="Path to CA cert (optional, for custom PKI)" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+            </div>
+            <label class="flex items-center gap-1.5 text-xs">
+                <input type="checkbox" name="domain_verify_cert" {% if cfg.web.domain_verify_cert %}checked{% endif %} class="accent-emerald-500">
+                <span>Verify server cert</span>
+            </label>
+        </div>
+
+        <!-- RBAC Group Mappings -->
+        <div class="mt-4">
+            <div class="text-xs font-medium text-emerald-300 mb-1.5">RBAC Group Mappings (semicolon or comma separated group names / DNs / displayNames)</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                    <label class="text-zinc-400">Administrator Groups</label>
+                    <input name="domain_admin_groups" value="{{ cfg.web.domain_admin_groups }}" placeholder="Domain Admins;RocketLogAI-Admins" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5">
+                </div>
+                <div>
+                    <label class="text-zinc-400">Operator Groups (can run confirmed actions)</label>
+                    <input name="domain_operator_groups" value="{{ cfg.web.domain_operator_groups }}" placeholder="RocketLogAI-Operators;Server-Ops" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5">
+                </div>
+                <div>
+                    <label class="text-zinc-400">Analyst Groups</label>
+                    <input name="domain_analyst_groups" value="{{ cfg.web.domain_analyst_groups }}" placeholder="Security-Analysts" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5">
+                </div>
+                <div>
+                    <label class="text-zinc-400">Viewer Groups (read-only)</label>
+                    <input name="domain_viewer_groups" value="{{ cfg.web.domain_viewer_groups }}" placeholder="" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5">
+                </div>
+            </div>
+            <p class="text-[10px] text-zinc-500 mt-1">Users get the highest role their groups match. Fallback to Viewer.</p>
+        </div>
+
         <div class="mt-3 flex items-center gap-2 text-xs">
             <input type="checkbox" name="domain_fallback_local" {% if cfg.web.domain_fallback_local %}checked{% endif %} class="accent-emerald-500">
             <span>Allow local fallback if domain authentication fails</span>
@@ -611,21 +667,81 @@ window.syncGeoProvidersToHidden = function(providersOverride) {
 
         <div class="mt-2 flex items-center gap-2 text-xs">
             <input type="checkbox" name="allow_local_login" {% if cfg.web.allow_local_login %}checked{% endif %} class="accent-emerald-500">
-            <span>Allow local administrator login (recommended - disable only if you want to force domain-only and have safe CLI recovery)</span>
+            <span>Allow local administrator login (recommended - disable only if you want to force domain-only; use CLI <code>logsentinel enable-local-login</code> to recover)</span>
         </div>
 
-        <!-- Domain Test -->
+        <!-- Domain Test (enhanced) -->
         <div class="mt-5 pt-4 border-t border-zinc-800">
-            <button type="button" onclick="testDomainConnection()" 
-                    class="px-4 py-1.5 text-sm rounded-2xl border border-emerald-700 hover:bg-emerald-900/30 text-emerald-300">
-                Test Domain Connectivity
-            </button>
-            <span id="domain-test-result" class="ml-3 text-xs"></span>
+            <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                    <label class="text-xs text-zinc-400">Optional test user (for full auth + role test)</label>
+                    <input id="test-domain-user" placeholder="jdoe or jdoe@corp.local" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+                </div>
+                <div class="flex-1">
+                    <label class="text-xs text-zinc-400">Test password</label>
+                    <input id="test-domain-pass" type="password" placeholder="••••••" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+                </div>
+                <button type="button" onclick="testDomainConnectionFull()" 
+                        class="px-4 py-1.5 text-sm rounded-2xl border border-emerald-700 hover:bg-emerald-900/30 text-emerald-300 whitespace-nowrap">
+                    Test Domain + Groups + Role
+                </button>
+            </div>
+            <span id="domain-test-result" class="ml-3 text-xs block mt-1"></span>
+            <p class="text-[10px] text-zinc-500 mt-1">Without test user: validates service account + group search capability.</p>
         </div>
+    </div>
+
+    <!-- Entra ID (Microsoft Entra / Azure AD) - Phase 4 -->
+    <div class="section-card rounded-3xl p-6 mt-6">
+        <h2 class="font-semibold mb-4 flex items-center gap-2">Microsoft Entra ID (Azure AD) Authentication</h2>
+        <div class="flex items-center gap-2 mb-4">
+            <input type="checkbox" name="entra_enabled" {% if cfg.web.entra_enabled %}checked{% endif %} class="accent-emerald-500">
+            <span class="text-sm">Enable Entra ID login (OAuth2 / OpenID Connect + Graph)</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div>
+                <label class="text-zinc-400">Tenant ID</label>
+                <input name="entra_tenant_id" value="{{ cfg.web.entra_tenant_id }}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="text-zinc-400">App (Client) ID</label>
+                <input name="entra_client_id" value="{{ cfg.web.entra_client_id }}" placeholder="App Registration Client ID" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="text-zinc-400">Client Secret</label>
+                <input type="password" name="entra_client_secret" value="" placeholder="•••••••• (leave to keep)" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2">
+            </div>
+            <div>
+                <label class="text-zinc-400">Redirect URI (for full OAuth flow)</label>
+                <input name="entra_redirect_uri" value="{{ cfg.web.entra_redirect_uri }}" placeholder="https://your-host/callback/entra" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2">
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <label class="text-xs text-zinc-400">Scopes (space separated)</label>
+            <input name="entra_scopes" value="{{ cfg.web.entra_scopes or 'openid profile email User.Read GroupMember.Read.All' }}" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+        </div>
+
+        <div class="mt-3">
+            <div class="text-xs font-medium text-emerald-300 mb-1">Entra Group Mappings (displayName or Object ID)</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div><input name="entra_admin_groups" value="{{ cfg.web.entra_admin_groups }}" placeholder="RocketLogAI-Admins" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5"></div>
+                <div><input name="entra_operator_groups" value="{{ cfg.web.entra_operator_groups }}" placeholder="RocketLogAI-Operators" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5"></div>
+                <div><input name="entra_analyst_groups" value="{{ cfg.web.entra_analyst_groups }}" placeholder="RocketLogAI-Analysts" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5"></div>
+                <div><input name="entra_viewer_groups" value="{{ cfg.web.entra_viewer_groups }}" placeholder="" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5"></div>
+            </div>
+        </div>
+        <p class="text-[10px] text-amber-400 mt-2">Full browser OAuth flow requires additional redirect route wiring (see docs). Current implementation supports token-based and client-cred + Graph lookup for testing.</p>
     </div>
 
     <script>
         async function testDomainConnection() {
+            // Legacy simple test (kept for compatibility)
+            await testDomainConnectionFull();
+        }
+
+        async function testDomainConnectionFull() {
             const resultEl = document.getElementById('domain-test-result');
             resultEl.textContent = 'Testing...';
             resultEl.className = 'ml-3 text-xs text-yellow-400';
@@ -633,6 +749,21 @@ window.syncGeoProvidersToHidden = function(providersOverride) {
             const formData = new FormData();
             formData.append('domain_server', document.querySelector('[name="domain_server"]').value);
             formData.append('domain_base_dn', document.querySelector('[name="domain_base_dn"]').value);
+
+            // Pass optional test user/pass for full auth + role test
+            const testUser = document.getElementById('test-domain-user');
+            const testPass = document.getElementById('test-domain-pass');
+            if (testUser && testUser.value) formData.append('test_user', testUser.value);
+            if (testPass && testPass.value) formData.append('test_pass', testPass.value);
+
+            // Also pass new service account / LDAPS fields so test can use current form values
+            const svcAcct = document.querySelector('[name="domain_service_account"]');
+            const svcPass = document.querySelector('[name="domain_service_password"]');
+            if (svcAcct) formData.append('domain_service_account', svcAcct.value);
+            if (svcPass && svcPass.value) formData.append('domain_service_password', svcPass.value);
+
+            const useLdaps = document.querySelector('[name="domain_use_ldaps"]');
+            if (useLdaps) formData.append('domain_use_ldaps', useLdaps.checked ? 'on' : '');
 
             try {
                 const res = await fetch('/api/domain/test', { method: 'POST', body: formData });
@@ -643,6 +774,9 @@ window.syncGeoProvidersToHidden = function(providersOverride) {
                 } else {
                     resultEl.textContent = '✗ ' + data.message;
                     resultEl.className = 'ml-3 text-xs text-red-400';
+                }
+                if (data.details) {
+                    console.log('Domain test details:', data.details);
                 }
             } catch (e) {
                 resultEl.textContent = '✗ Connection test failed';

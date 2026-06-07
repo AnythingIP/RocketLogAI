@@ -1250,9 +1250,102 @@ class Storage:
         with self._cursor() as cur:
             try:
                 cur.execute("SELECT * FROM credential_profiles ORDER BY name")
-                return [dict(r) for r in cur.fetchall()]
+                profiles = []
+                for row in cur.fetchall():
+                    p = dict(row)
+                    # Decrypt secret on the way out if it looks encrypted
+                    if p.get("secret"):
+                        p["secret"] = self._decrypt_credential_secret(p["secret"])
+                    profiles.append(p)
+                return profiles
             except Exception:
                 return []
+
+    def get_credential_profile(self, name: str) -> dict[str, Any] | None:
+        """Get a single credential profile by name (with secret decrypted for use)."""
+        with self._cursor() as cur:
+            try:
+                cur.execute("SELECT * FROM credential_profiles WHERE name = ?", (name,))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                p = dict(row)
+                if p.get("secret"):
+                    p["secret"] = self._decrypt_credential_secret(p["secret"])
+                return p
+            except Exception:
+                return None
+
+    def upsert_credential_profile(self, name: str, type: str, username: str | None = None,
+                                   secret: str | None = None, notes: str | None = None) -> int:
+        """Create or update a reusable credential profile.
+        Secret is encrypted before storage (reversible for actual device use).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        encrypted_secret = self._encrypt_credential_secret(secret) if secret else None
+        with self._cursor() as cur:
+            cur.execute("""
+                INSERT INTO credential_profiles (name, type, username, secret, notes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    type=excluded.type,
+                    username=excluded.username,
+                    secret=excluded.secret,
+                    notes=excluded.notes,
+                    updated_at=excluded.updated_at
+            """, (name, type, username, encrypted_secret, notes, now))
+            # Return the id
+            cur.execute("SELECT id FROM credential_profiles WHERE name = ?", (name,))
+            return cur.fetchone()[0]
+
+    # --- Simple reversible encryption for device credentials (so they can be used, unlike login hashes) ---
+    def _get_credential_cipher(self):
+        try:
+            from cryptography.fernet import Fernet
+            key_path = Path("data/credential.key")
+            if not key_path.exists():
+                key = Fernet.generate_key()
+                key_path.write_bytes(key)
+                try:
+                    key_path.chmod(0o600)
+                except Exception:
+                    pass
+                logger.info("Generated new credential encryption key at %s (keep this file safe)", key_path)
+            key = key_path.read_bytes()
+            return Fernet(key)
+        except Exception as e:
+            logger.warning("cryptography not available or key error (%s) — credential secrets will be stored with only light protection. pip install cryptography for real encryption.", e)
+            return None
+
+    def _encrypt_credential_secret(self, plaintext: str | None) -> str | None:
+        if not plaintext:
+            return None
+        cipher = self._get_credential_cipher()
+        if cipher is None:
+            # Fallback: base64 only (not real encryption, but consistent with some existing patterns)
+            import base64
+            return "b64:" + base64.b64encode(plaintext.encode()).decode()
+        return "fernet:" + cipher.encrypt(plaintext.encode()).decode()
+
+    def _decrypt_credential_secret(self, stored: str | None) -> str | None:
+        if not stored:
+            return None
+        if stored.startswith("fernet:"):
+            cipher = self._get_credential_cipher()
+            if cipher:
+                try:
+                    return cipher.decrypt(stored[7:].encode()).decode()
+                except Exception:
+                    return None
+            return None
+        if stored.startswith("b64:"):
+            import base64
+            try:
+                return base64.b64decode(stored[4:]).decode()
+            except Exception:
+                return stored
+        # Plaintext legacy
+        return stored
 
     # --- API Tokens for programmatic access to this RocketLogAI instance ---
 

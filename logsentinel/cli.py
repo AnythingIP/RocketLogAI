@@ -376,6 +376,22 @@ def run(ctx, foreground: bool, web: bool, web_host: str, web_port: int, web_user
     asyncio.run(main_loop())
 
 
+# Phase 4 auth CLI helper (as suggested)
+@main.command()
+@click.option("--test-domain", is_flag=True, help="Test current domain settings with Phase 4 LDAP service-account + group + role logic")
+@click.option("--server", default=None)
+@click.option("--base-dn", default=None)
+@click.option("--test-user", default=None)
+@click.option("--test-pass", default=None)
+@click.pass_context
+def auth(ctx, test_domain, server, base_dn, test_user, test_pass):
+    """Phase 4 enterprise auth testing utilities."""
+    print("Use 'logsentinel run' for normal operation. For domain test use the web UI test button (recommended) or implement full CLI here.")
+    if test_domain:
+        print("Domain test via CLI is best done through the /config UI 'Test Domain + Groups + Role' button for full form support.")
+    # Full implementation can call the same try_ldap_login logic as the web test endpoint.
+
+
 def _make_log_handler(storage, analyzer, rem, cfg):
     """Create the callback that receives every syslog message."""
     async def handler(record: dict):

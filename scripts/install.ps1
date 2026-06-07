@@ -57,6 +57,9 @@ pip install --upgrade pip setuptools wheel
 Set-Location $InstallDir
 pip install ".[web]"
 
+Write-Host "`n[4.5/5] Installing Phase 3/4 AI + Auth extras (open-interpreter for conversational operator, cryptography for encrypted secrets)..." -ForegroundColor Yellow
+pip install open-interpreter cryptography
+
 Write-Host "`n[5/5] Creating launchers..." -ForegroundColor Yellow
 
 @"
@@ -84,8 +87,11 @@ Write-Host "  2. Copy example-config.yaml to config.yaml and edit it (especially
 Write-Host "  3. Double-click start-rocketlogai.bat"
 Write-Host "  4. Open the browser and change the default admin password immediately"
 Write-Host ""
-Write-Host "New in v1.3: Daily Briefing (/daily) - the Operator Companion. Chat with the crew about the day's events, get scripts, promote to monitors." -ForegroundColor Yellow
-Write-Host "Also improved: Ollama URL handling + separate local/cloud LLM config with auto-prefills." -ForegroundColor Yellow
+Write-Host "New in this build (Phases 1-4):" -ForegroundColor Yellow
+Write-Host "  - Powerful AI Assistant powered by Open Interpreter (natural language device ops, plans, confirmations, dynamic tools)." -ForegroundColor Yellow
+Write-Host "  - Advanced enterprise auth: AD/LDAP with service accounts + groups, Entra ID, full RBAC (Viewer/Analyst/Operator/Admin) from directory groups." -ForegroundColor Yellow
+Write-Host "  - Encrypted secrets for service accounts/Entra, enhanced test tools, RBAC-protected routes." -ForegroundColor Yellow
+Write-Host "Use: pip install -e '.[web,ai]' for full experience." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Python download link (if you ever need it again):" -ForegroundColor Cyan
 Write-Host "https://www.python.org/downloads/windows/" -ForegroundColor Cyan

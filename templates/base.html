@@ -144,7 +144,7 @@
                     {% endif %}
                 </div>
             </div>
-            <button onclick="toggleSidebar()" class="text-zinc-400 hover:text-white p-1">
+            <button id="sidebar-toggle" onclick="toggleSidebar()" class="text-zinc-400 hover:text-white p-1" title="Collapse sidebar">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
                 </svg>
@@ -203,8 +203,41 @@
         </div>
     </aside>
 
+    <!-- Early inline sync: applies remembered "collapsed" state *before* full DOMContentLoaded.
+         This prevents a flash of the wide sidebar when the user has it hidden (slides it left immediately). -->
+    <script>
+    (function() {
+        try {
+            if (localStorage.getItem('sidebarCollapsed') === 'true' && window.innerWidth >= 768) {
+                var sb = document.getElementById('sidebar');
+                var mn = document.getElementById('main-content');
+                var tb = document.getElementById('topbar');
+                if (sb) {
+                    sb.classList.remove('md:translate-x-0');
+                    sb.classList.add('-translate-x-full', 'md:-translate-x-full');
+                }
+                if (mn) { mn.classList.remove('md:ml-64'); mn.classList.add('md:ml-0'); }
+                if (tb) { tb.classList.remove('left-64'); tb.classList.add('left-0'); }
+                var sh = document.getElementById('show-sidebar-btn');
+                if (sh) sh.classList.remove('hidden');
+                document.querySelectorAll('.sidebar-text').forEach(function(el){ el.classList.add('hidden'); });
+            }
+        } catch(e) {}
+    })();
+    </script>
+
     <!-- Top Bar (desktop only - hidden on mobile) -->
-    <div class="hidden md:block fixed top-0 right-0 left-64 bg-[#0f0f11] border-b border-zinc-800 px-6 py-3 flex items-center justify-between text-sm z-40 transition-all" id="topbar">
+    <div class="hidden md:block fixed top-0 right-0 left-0 bg-[#0f0f11] border-b border-zinc-800 px-6 py-3 flex items-center justify-between text-sm z-40 transition-all" id="topbar">
+        <!-- Desktop sidebar show button (appears only when sidebar is hidden / slid off to the left) -->
+        <div class="flex items-center">
+            <button id="show-sidebar-btn" onclick="toggleSidebar()" 
+                    class="hidden mr-3 flex items-center justify-center w-8 h-8 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                    title="Show sidebar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+            </button>
+        </div>
         <div class="flex-1"></div>
 
         <div class="flex items-center gap-3 text-xs">
@@ -234,7 +267,7 @@
     <div class="md:hidden h-14"></div>
 
     <!-- Main Content -->
-    <div class="md:ml-64 pt-0 md:pt-14 transition-all" id="main-content">
+    <div class="md:ml-0 pt-0 md:pt-14 transition-all" id="main-content">
         <div class="max-w-7xl mx-auto p-4 md:p-6">
             {% block content %}{% endblock %}
         </div>
@@ -244,31 +277,65 @@
     <div id="mobile-overlay" onclick="closeMobileDrawer()" class="hidden md:hidden fixed inset-0 bg-black/60 z-[65]"></div>
 
 <script>
+function syncDesktopSidebarUI(sidebar, main, topbar, isHidden) {
+    const showBtn = document.getElementById('show-sidebar-btn');
+    const internalBtn = document.getElementById('sidebar-toggle');
+
+    if (isHidden) {
+        // Sidebar slid fully off to the left
+        if (main) {
+            main.classList.remove('md:ml-64');
+            main.classList.add('md:ml-0');
+        }
+        if (topbar) {
+            topbar.classList.remove('left-64');
+            topbar.classList.add('left-0');
+        }
+        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.add('hidden'));
+        if (showBtn) showBtn.classList.remove('hidden');
+        if (internalBtn) internalBtn.title = 'Collapse sidebar';
+        localStorage.setItem('sidebarCollapsed', 'true');
+    } else {
+        // Sidebar visible (pushing content)
+        if (main) {
+            main.classList.remove('md:ml-0');
+            main.classList.add('md:ml-64');
+        }
+        if (topbar) {
+            topbar.classList.remove('left-0');
+            topbar.classList.add('left-64');
+        }
+        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.remove('hidden'));
+        if (showBtn) showBtn.classList.add('hidden');
+        if (internalBtn) internalBtn.title = 'Collapse sidebar';
+        localStorage.setItem('sidebarCollapsed', 'false');
+    }
+}
+
 function toggleSidebar() {
-    // Desktop collapse only
+    // Desktop only: now does a full slide-off to the left (disappears) instead of narrow rail.
+    // Main content + topbar expand to full width. A small show button appears in the topbar.
     const sidebar = document.getElementById('sidebar');
     const main = document.getElementById('main-content');
     const topbar = document.getElementById('topbar');
     if (!sidebar || window.innerWidth < 768) return;
 
-    const isCollapsed = sidebar.classList.contains('w-16');
+    // Clean legacy width-based collapse classes
+    sidebar.classList.remove('w-72', 'w-64', 'w-16');
 
-    if (isCollapsed) {
-        sidebar.classList.remove('w-16');
-        sidebar.classList.add('w-64');
-        main.classList.remove('ml-16');
-        main.classList.add('ml-64');
-        if (topbar) { topbar.classList.remove('left-16'); topbar.classList.add('left-64'); }
-        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.remove('hidden'));
+    const isHidden = sidebar.classList.contains('md:-translate-x-full') || sidebar.classList.contains('-translate-x-full');
+
+    if (isHidden) {
+        // Expand / show: bring it back from the left
+        sidebar.classList.remove('-translate-x-full', 'md:-translate-x-full');
+        sidebar.classList.add('md:translate-x-0');
+        syncDesktopSidebarUI(sidebar, main, topbar, false);
     } else {
-        sidebar.classList.remove('w-64');
-        sidebar.classList.add('w-16');
-        main.classList.remove('ml-64');
-        main.classList.add('ml-16');
-        if (topbar) { topbar.classList.remove('left-64'); topbar.classList.add('left-16'); }
-        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.add('hidden'));
+        // Collapse / hide: slide the whole sidebar off to the left
+        sidebar.classList.remove('md:translate-x-0');
+        sidebar.classList.add('-translate-x-full', 'md:-translate-x-full');
+        syncDesktopSidebarUI(sidebar, main, topbar, true);
     }
-    localStorage.setItem('sidebarCollapsed', !isCollapsed);
 }
 
 function toggleMobileDrawer() {
@@ -307,19 +374,27 @@ document.addEventListener('keydown', (e) => {
 
 // Auto-close drawer when clicking a nav link on mobile
 document.addEventListener('DOMContentLoaded', () => {
-    // Desktop restore collapsed state
+    // Desktop restore collapsed state (full slide to the left, persisted across refreshes)
     const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
-    if (collapsed && window.innerWidth >= 768) {
-        const sidebar = document.getElementById('sidebar');
-        const main = document.getElementById('main-content');
-        const topbar = document.getElementById('topbar');
-        if (sidebar) {
-            sidebar.classList.remove('w-64');
-            sidebar.classList.add('w-16');
+    const sidebar = document.getElementById('sidebar');
+    const main = document.getElementById('main-content');
+    const topbar = document.getElementById('topbar');
+
+    if (sidebar && window.innerWidth >= 768) {
+        // Clean legacy classes
+        sidebar.classList.remove('w-72', 'w-64', 'w-16', 'translate-x-0');
+
+        if (collapsed) {
+            // Start fully hidden (disappeared to the left)
+            sidebar.classList.remove('md:translate-x-0');
+            sidebar.classList.add('-translate-x-full', 'md:-translate-x-full');
+            syncDesktopSidebarUI(sidebar, main, topbar, true);
+        } else {
+            // Start visible / pushed
+            sidebar.classList.remove('-translate-x-full', 'md:-translate-x-full');
+            sidebar.classList.add('md:translate-x-0');
+            syncDesktopSidebarUI(sidebar, main, topbar, false);
         }
-        if (main) { main.classList.remove('ml-64'); main.classList.add('ml-16'); }
-        if (topbar) { topbar.classList.remove('left-64'); topbar.classList.add('left-16'); }
-        document.querySelectorAll('.sidebar-text').forEach(el => el.classList.add('hidden'));
     }
 
     // Mobile: ensure drawer starts closed + tap any nav link closes it

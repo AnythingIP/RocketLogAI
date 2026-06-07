@@ -126,15 +126,43 @@ class WebConfig:
     local_password: str = "admin"
     totp_secret: str = ""  # Base32 secret for TOTP (Microsoft Authenticator etc.)
 
-    # Domain / Active Directory authentication
+    # Domain / Active Directory authentication (Phase 4 enhanced)
     domain_enabled: bool = False
-    domain_server: str = ""
-    domain_base_dn: str = ""
-    domain_user_domain: str = ""
+    domain_server: str = ""                    # e.g. ldaps://dc01.corp.local or dc01.corp.local:636
+    domain_base_dn: str = ""                   # e.g. DC=corp,DC=local
+    domain_user_domain: str = ""               # NetBIOS e.g. CORP for DOMAIN\user
+
+    # Service account for group lookups (recommended, least-privilege)
+    domain_service_account: str = ""           # e.g. CN=svc-rocketauth,OU=Service,DC=corp,DC=local or svc-rocketauth@corp.local
+    domain_service_password: str = ""          # Will be encrypted when saved via storage/config
+
+    # LDAPS / TLS
+    domain_use_ldaps: bool = False
+    domain_ca_cert: str = ""                   # Path to CA cert for LDAPS verification (or leave for system trust)
+    domain_verify_cert: bool = True
+
+    # Group -> Role mapping (comma or semicolon separated)
+    domain_admin_groups: str = ""              # e.g. "Domain Admins;RocketLogAI-Admins"
+    domain_operator_groups: str = ""           # Can run confirmed actions (Operator role)
+    domain_analyst_groups: str = ""            # Can view + run analyses
+    domain_viewer_groups: str = ""             # Read-only
+
     domain_fallback_local: bool = True
 
     # Emergency local login toggle (can be disabled by admin to force domain-only, re-enabled via CLI if locked out)
     allow_local_login: bool = True
+
+    # Entra ID (Azure AD / Microsoft Entra) - Phase 4
+    entra_enabled: bool = False
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""                  # App Registration client ID
+    entra_client_secret: str = ""              # Will be encrypted
+    entra_redirect_uri: str = ""               # e.g. https://your-rocketlogai/callback/entra
+    entra_scopes: str = "openid profile email User.Read GroupMember.Read.All"  # space separated
+    entra_admin_groups: str = ""               # Object IDs or names (displayName or id)
+    entra_operator_groups: str = ""
+    entra_analyst_groups: str = ""
+    entra_viewer_groups: str = ""
 
     # Web Server Listening
     web_host: str = "0.0.0.0"  # changed default for better first-run experience on servers   # "127.0.0.1", "0.0.0.0", or specific IP
@@ -549,8 +577,29 @@ class Config:
             cfg.web.domain_server = w.get("domain_server", cfg.web.domain_server)
             cfg.web.domain_base_dn = w.get("domain_base_dn", cfg.web.domain_base_dn)
             cfg.web.domain_user_domain = w.get("domain_user_domain", cfg.web.domain_user_domain)
+            cfg.web.domain_service_account = w.get("domain_service_account", cfg.web.domain_service_account)
+            cfg.web.domain_service_password = w.get("domain_service_password", cfg.web.domain_service_password)
+            cfg.web.domain_use_ldaps = w.get("domain_use_ldaps", cfg.web.domain_use_ldaps)
+            cfg.web.domain_ca_cert = w.get("domain_ca_cert", cfg.web.domain_ca_cert)
+            cfg.web.domain_verify_cert = w.get("domain_verify_cert", cfg.web.domain_verify_cert)
+            cfg.web.domain_admin_groups = w.get("domain_admin_groups", cfg.web.domain_admin_groups)
+            cfg.web.domain_operator_groups = w.get("domain_operator_groups", cfg.web.domain_operator_groups)
+            cfg.web.domain_analyst_groups = w.get("domain_analyst_groups", cfg.web.domain_analyst_groups)
+            cfg.web.domain_viewer_groups = w.get("domain_viewer_groups", cfg.web.domain_viewer_groups)
             cfg.web.domain_fallback_local = w.get("domain_fallback_local", cfg.web.domain_fallback_local)
             cfg.web.allow_local_login = w.get("allow_local_login", cfg.web.allow_local_login)
+
+            # Entra ID
+            cfg.web.entra_enabled = w.get("entra_enabled", cfg.web.entra_enabled)
+            cfg.web.entra_tenant_id = w.get("entra_tenant_id", cfg.web.entra_tenant_id)
+            cfg.web.entra_client_id = w.get("entra_client_id", cfg.web.entra_client_id)
+            cfg.web.entra_client_secret = w.get("entra_client_secret", cfg.web.entra_client_secret)
+            cfg.web.entra_redirect_uri = w.get("entra_redirect_uri", cfg.web.entra_redirect_uri)
+            cfg.web.entra_scopes = w.get("entra_scopes", cfg.web.entra_scopes)
+            cfg.web.entra_admin_groups = w.get("entra_admin_groups", cfg.web.entra_admin_groups)
+            cfg.web.entra_operator_groups = w.get("entra_operator_groups", cfg.web.entra_operator_groups)
+            cfg.web.entra_analyst_groups = w.get("entra_analyst_groups", cfg.web.entra_analyst_groups)
+            cfg.web.entra_viewer_groups = w.get("entra_viewer_groups", cfg.web.entra_viewer_groups)
 
             # New web server + SSL settings
             cfg.web.web_host = w.get("web_host", cfg.web.web_host)
@@ -650,8 +699,30 @@ class Config:
                 "domain_server": "",
                 "domain_base_dn": "",
                 "domain_user_domain": "",
-                "domain_fallback_local": True,
-                "allow_local_login": True,
+                # Service account (recommended for group lookups - use a low-priv account)
+                "domain_service_account": "",
+                "domain_service_password": "",   # Will be encrypted on save
+                "domain_use_ldaps": false,
+                "domain_ca_cert": "",
+                "domain_verify_cert": true,
+                # Group mappings (semicolon or comma separated group names or DNs)
+                "domain_admin_groups": "Domain Admins;RocketLogAI-Admins",
+                "domain_operator_groups": "RocketLogAI-Operators",
+                "domain_analyst_groups": "RocketLogAI-Analysts",
+                "domain_viewer_groups": "",
+                "domain_fallback_local": true,
+                "allow_local_login": true,
+                # Entra ID (Microsoft Entra / Azure AD)
+                "entra_enabled": false,
+                "entra_tenant_id": "YOUR-TENANT-ID",
+                "entra_client_id": "YOUR-APP-CLIENT-ID",
+                "entra_client_secret": "",  # Will be encrypted
+                "entra_redirect_uri": "https://your-rocketlogai-host/callback/entra",
+                "entra_scopes": "openid profile email User.Read GroupMember.Read.All",
+                "entra_admin_groups": "RocketLogAI-Admins",
+                "entra_operator_groups": "RocketLogAI-Operators",
+                "entra_analyst_groups": "",
+                "entra_viewer_groups": "",
             },
             "branding": {
                 "instance_name": "",
