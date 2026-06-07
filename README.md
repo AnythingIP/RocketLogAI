@@ -1,10 +1,5 @@
 # RocketLogAI (by AnythingIP)
 
-> **🌐 Live site & interactive demo:** [https://anythingip.github.io/RocketLogAI](https://anythingip.github.io/RocketLogAI)
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-brightgreen)](https://anythingip.github.io/RocketLogAI)
-
 **AI-powered local syslog server + security analyzer** that uses offline LLMs (LM Studio, Ollama, etc.) to detect threats and anomalies in real time.
 
 - Receives syslog (UDP + TCP)
@@ -15,18 +10,13 @@
 - **Fully offline IP geolocation** (optional free MaxMind GeoLite2 DB)
 - **Deep Home Assistant integration** — enriches threats with your actual devices and can fire rich alerts inside HA
 - **Active Heartbeat Monitoring** — not just port checks. Verify that the *correct* website version is running, SSH is up-to-date, etc. Outdated or down services become first-class threats that go through LLM analysis, alerting, and HA automation. Safe remediation actions (e.g. "update SSH") can be triggered after human confirmation.
-- Remediation hooks exist but are **disabled and heavily guarded** by default
-
-See the full beautiful dashboard, Daily Briefing, AI Assistant, and try a simulated analysis on the **[live project site](https://anythingip.github.io/RocketLogAI)**.
-
-- Receives syslog (UDP + TCP)
-- Fast deterministic rule engine for common attacks
-- Sends suspicious logs to your local LLM for deep analysis
-- Stores everything in SQLite
-- Zero cloud, zero data exfiltration
-- **Fully offline IP geolocation** (optional free MaxMind GeoLite2 DB)
-- **Deep Home Assistant integration** — enriches threats with your actual devices and can fire rich alerts inside HA
-- **Active Heartbeat Monitoring** — not just port checks. Verify that the *correct* website version is running, SSH is up-to-date, etc. Outdated or down services become first-class threats that go through LLM analysis, alerting, and HA automation. Safe remediation actions (e.g. "update SSH") can be triggered after human confirmation.
+- **Conversational Device Operator (Phase 3 in the AI Assistant)** — Talk to the 🤖 Assistant exactly like Grok Build or Open Interpreter using natural English:
+  - "Use this token ghp_xxx to connect to GitHub and create an issue summarizing today's logs"
+  - "Download the latest Wireshark and deploy it to these 3 computers"
+  - "Create a PowerPoint presentation summarizing network activity for the executives"
+  - "Connect to my Home Assistant with this password and turn on the lights"
+  - "Analyze why the firewall admin logged in at 3am"
+  Powered by Open Interpreter (primary backend) inside a strict safety controller (`logsentinel/ai_assistant/controller.py`). Always shows a detailed Action Plan first, requires explicit confirmation for any changes, accepts & securely stores credentials from conversation, supports dynamic tools, OS adaptation, automatic backups, rollback guidance, and full audit logging. Install `open-interpreter` (and optionally `python-pptx`) for maximum power. Safety-first at every layer.
 - Remediation hooks exist but are **disabled and heavily guarded** by default
 
 ## Philosophy
@@ -39,8 +29,7 @@ RocketLogAI is the opposite: everything runs on your machine, against your local
 ### 1. Install
 
 ```bash
-git clone https://github.com/AnythingIP/RocketLogAI.git
-cd RocketLogAI
+cd logsentinel
 pip install -e ".[web]"     # recommended (includes FastAPI dashboard + extras)
 # or for the absolute minimum core
 pip install -e .
@@ -274,6 +263,71 @@ docker run -d \
 
 MIT
 
+## What's New in This Build (Phases 1-4 Complete)
+
+**Phase 1-2 Quick Fixes + Conversational Operator**
+- Fixed sidebar collapse (full slide-to-left, persists state, better arrows + topbar show button).
+- Better device icons (OS-aware:  Windows 🪟 Linux 🐧 Router 📡 etc.) + fixed MAC vendor lookup (now reliably populates manufacturer + persists).
+- Daily Briefing chat moved to top.
+- AI Assistant transformed into safe natural-language operator (ping/nmap/SSH/deploy/etc. via plans + explicit confirmation).
+
+**Phase 3 - Extremely Powerful Natural AI Assistant**
+- Uses **Open Interpreter** as primary execution backend (wrapped in strict safety controller at `logsentinel/ai_assistant/controller.py`).
+- Accepts high-level English like the examples in the query (HA control with token from chat, GitHub issues, PowerPoint generation, anomaly analysis, software deploy, etc.).
+- Dynamic tool installation (proposes `ensure_tool python-pptx` etc. as plan steps).
+- Credential ingestion from conversation → encrypted storage + reuse.
+- Always shows detailed Action Plan first; confirmation required for risk; auto-backups + rollback notes; full audit.
+- OS detection/adaptation, multi-step orchestration.
+
+**Phase 4 - Advanced Authentication & RBAC (Enterprise Ready)**
+- Full Active Directory / LDAPS with dedicated service account for group lookups (no more giving users broad search rights).
+- Microsoft Entra ID (Azure AD) support via OAuth2 + Microsoft Graph (user + group membership).
+- True 4-tier RBAC: **Viewer** (read-only) → **Analyst** → **Operator** (confirmed actions) → **Administrator**.
+- Groups from AD/Entra are mapped in config (or UI) to roles. Highest match wins. Stored in session + audited.
+- Secure encrypted storage for service account passwords and Entra client secrets.
+- Dramatically improved "Test Domain Connectivity" (service bind + groups + optional full user auth + resolved role).
+- RBAC enforcement on sensitive endpoints (Operator for assistant actions, Admin for config).
+- Local admin fallback always available (with CLI escape hatch `logsentinel enable-local-login`).
+- Proper session logout + login audit logging.
+
+**Installers updated** to pull `open-interpreter` + `cryptography` (for full encryption).
+
+**Quick full install:**
+```bash
+pip install -e ".[web,ai]"   # includes Open Interpreter for the conversational AI Operator + crypto for new auth
+# or use the updated scripts/install.sh | install.ps1 | Docker
+```
+
+### What You Should Test in This Build
+**High priority (new in Phase 4):**
+- AD/LDAP: service account bind, group membership resolution, role mapping, LDAPS.
+- Entra ID: token/Graph path + group-to-role.
+- RBAC: log in as different group members and verify permissions (e.g. non-Operator can't confirm actions; non-Admin can't save config).
+- The enhanced "Test Domain + Groups + Role" button on /config (with and without test user).
+- Encryption of new secrets (check config.yaml after save via UI — should be fernet:... or similar).
+- Login audit in /activity.
+
+**High priority (Phase 3 AI Operator):**
+- Natural commands in /assistant: "ping 8.8.8.8", "show devices using port 22", "create a PowerPoint summarizing recent threats", "use this token ghp_xxx for github and create an issue...".
+- Full flow: see plan → review → Confirm & Execute (or Dry-run) → results + rollback hint + activity log entry.
+- Credential from chat is stored and reusable.
+- If open-interpreter not installed, it should gracefully fall back but still show plans.
+
+**Regression / existing:**
+- Sidebar toggle (collapse/expand, persist, mobile).
+- Devices page icons + vendor names.
+- Daily Briefing layout and chat.
+- Basic domain login still works.
+- Local admin + TOTP + API tokens.
+- All previous Phase 1-2 fixes.
+
+**Docker / Installers:**
+- Fresh install on Linux/Windows should pull open-interpreter + cryptography when using the updated scripts.
+- `pip install -e ".[web,ai]"` or ".[full]" should work.
+- Docker image builds with the extras.
+
+Run `python -m py_compile logsentinel/*.py logsentinel/ai_assistant/*.py` after any manual edits.
+
 ## Disclaimer
 
-This is a powerful security tool. Automated analysis of production logs is inherently noisy. Never blindly trust AI output for security decisions. Always have a human in the loop, especially before enabling any remediation features.
+This is a powerful security tool. Automated analysis of production logs is inherently noisy. Never blindly trust AI output for security decisions. Always have a human in the loop, especially before enabling any remediation features. Advanced auth features (LDAP/Entra) require careful service account / App Registration permission scoping.

@@ -328,6 +328,36 @@ heartbeats:
 #   - Every outbound action (HA notifications, SSH remediation, 5250 CL execution, monitor checks)
 #
 # New data_sources: section above lets you configure multiple agent-less methods.
+
+# =============================================================================
+# Phase 4: Advanced Authentication & RBAC (new in this build)
+# Add under the "web:" section (or enable via the /config UI)
+# =============================================================================
+# web:
+#   domain_enabled: true
+#   domain_server: "ldaps://dc01.yourdomain.local:636"
+#   domain_base_dn: "DC=yourdomain,DC=local"
+#   domain_service_account: "CN=rocketauth-svc,OU=Services,DC=yourdomain,DC=local"
+#   domain_service_password: "SuperSecretServicePass123!"   # Will be encrypted when saved
+#   domain_use_ldaps: true
+#   domain_admin_groups: "Domain Admins;RocketLogAI-Admins"
+#   domain_operator_groups: "RocketLogAI-Operators"
+#   domain_analyst_groups: "Security-Analysts"
+#   domain_viewer_groups: ""
+#
+#   # Microsoft Entra ID (Azure AD)
+#   entra_enabled: false
+#   entra_tenant_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+#   entra_client_id: "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
+#   entra_client_secret: "your-client-secret-here"   # encrypted on save
+#   entra_scopes: "openid profile email User.Read GroupMember.Read.All"
+#   entra_admin_groups: "RocketLogAI-Admins"
+#   entra_operator_groups: "RocketLogAI-Operators"
+#
+# Roles (resolved at login from group membership, highest wins):
+#   administrator | operator | analyst | viewer
+# Local fallback (admin) always available unless you explicitly disable allow_local_login.
+# Use the "Test Domain + Groups + Role" button on /config after saving.
 # New credential types supported: windows_wmi, ibmi_5250, ibmi_ssh
 #
 # IBM i prebuilts live in data/remediation_scripts/prebuilts/ibmi_*.cl
