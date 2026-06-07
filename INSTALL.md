@@ -119,10 +119,20 @@ After starting:
    - Heartbeats / Monitors (add your important devices)
    - Geo (multi-source is supported)
 
-### The New AI Assistant
+### The New AI Assistant (Phases 2-3)
 After install, go to **AI Assistant** in the sidebar (🤖).
-- Ask it questions about RocketLogAI ("How do I automate old AS/400 menus?")
-- If it can't answer well, use the suggestion box. Only admins can review suggestions later.
+- Natural language operator commands are now supported (e.g. "ping the core router", "create a PowerPoint from today's threats", "use this token for GitHub and create an issue...").
+- Always shows a reviewable Action Plan first. Explicit confirmation required for changes.
+- For full power: `pip install open-interpreter` (the installers now pull it).
+
+### Advanced Authentication & RBAC (Phase 4)
+See the expanded "Windows Domain Authentication" and new "Microsoft Entra ID" sections on the **Config** page.
+- Use the "Test Domain + Groups + Role" button after filling service account + group mappings.
+- Roles: Viewer / Analyst / Operator / Administrator mapped from your directory groups.
+- Service account passwords and Entra secrets are encrypted on save.
+
+**Full feature install (recommended):**
+pip install -e ".[web,ai]"
 
 This page is the living documentation + feedback system.
 
