@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  rocketlogai:
+    build: .
+    image: rocketlogai:1.3
+    container_name: rocketlogai
+    restart: unless-stopped
+
+    ports:
+      # Web UI (change host port if needed)
+      - "8787:8787"
+      # Syslog (UDP + TCP). For privileged low ports (<1024) you may need:
+      #   - Use host networking or
+      #   - Run with --privileged or --cap-add=NET_BIND_SERVICE
+      #   - Or configure RocketLogAI to listen on higher ports (recommended)
+      - "5140:5140/udp"
+      - "5140:5140/tcp"
+      # Home Assistant (via mib1185/ha-addon-syslog) and other devices will send here.
+      # On the HA side use the *host* IP (e.g. 192.168.20.138), not the container IP.
+      # Configure the addon with syslog_host: "192.168.20.138" port 5140 udp.
+
+    volumes:
+      # Persistent data (database, blacklists, MAC vendors, SSL certs, etc.)
+      - rocketlogai_data:/app/data
+
+      # === REQUIRED for Maps to show real locations ===
+      # Download GeoLite2-City.mmdb (free) from MaxMind and place it in the same folder as this compose file,
+      # then uncomment the line below:
+      # - ./GeoLite2-City.mmdb:/app/GeoLite2-City.mmdb:ro
+
+      # Optional: Mount your own config.yaml
+      # - ./config.yaml:/app/config.yaml:ro
+
+    environment:
+      # You can pass config overrides here if desired
+      - PYTHONUNBUFFERED=1
+
+    # For syslog on privileged ports uncomment the next line (or use host network)
+    # cap_add:
+    #   - NET_BIND_SERVICE
+
+    # Healthcheck (optional but useful)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  rocketlogai_data:
+    driver: local

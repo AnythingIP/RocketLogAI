@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RocketLogAI • Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0a0a0c; }
+        .font-display { font-family: 'Space Grotesk', system-ui, sans-serif; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-[#0a0a0c] text-zinc-200">
+    <div class="w-full max-w-md px-6">
+        <div class="flex justify-center mb-8">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-black font-bold text-3xl shadow-inner">L</div>
+                <span class="font-display text-4xl font-semibold tracking-tighter">RocketLogAI</span>
+            </div>
+        </div>
+
+        <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 shadow-2xl">
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-semibold tracking-tight">Sign in</h1>
+                <p class="text-zinc-400 text-sm mt-1">Local security monitoring</p>
+            </div>
+
+            {% if error %}
+            <div class="mb-6 p-3 bg-red-950 border border-red-900 text-red-300 rounded-2xl text-sm">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="post" action="/login" class="space-y-5">
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 tracking-wider">USERNAME</label>
+                    <input type="text" name="username" value="{{ prefill_username or 'admin' }}" required
+                           class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-lg focus:outline-none focus:border-emerald-500 transition-colors">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 tracking-wider">PASSWORD</label>
+                    <input type="password" name="password" value="admin" required
+                           class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-lg focus:outline-none focus:border-emerald-500 transition-colors">
+                </div>
+
+                {% if require_totp %}
+                <div>
+                    <label class="block text-xs text-zinc-400 mb-1.5 tracking-wider">AUTHENTICATOR CODE (6 digits)</label>
+                    <input type="text" name="totp_code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"
+                           class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-lg font-mono tracking-[4px] focus:outline-none focus:border-emerald-500 transition-colors text-center"
+                           placeholder="123456">
+                    <p class="text-xs text-zinc-500 mt-1.5">Open Microsoft Authenticator and enter the 6-digit code.</p>
+                </div>
+                {% endif %}
+
+                <button type="submit"
+                        class="w-full mt-2 py-3.5 rounded-2xl bg-white text-black font-semibold text-lg active:scale-[0.985] transition-all hover:bg-zinc-100">
+                    Sign in
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-xs text-zinc-500">
+                Default credentials: <span class="font-mono text-emerald-400">admin / admin</span>
+            </div>
+        </div>
+
+        <p class="text-center text-xs text-zinc-600 mt-6">Secure local access • Your data never leaves this machine</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Automation Rules{% endblock %}
+
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">Threat Response Automation</h1>
+        <p class="text-zinc-400 mt-1">Tell RocketLogAI what to do automatically when it sees certain patterns (especially IoT noise)</p>
+    </div>
+    <a href="/config" class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">← Back to Config</a>
+</div>
+
+<div class="max-w-5xl">
+    <div class="section-card rounded-3xl p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Smart Suppression Rules</h2>
+        <p class="text-sm text-zinc-400 mb-6">
+            These rules run after the LLM analysis and Home Assistant device enrichment. 
+            They can automatically mark noisy but normal activity as "Expected IoT" so you stop getting alerts for them.
+        </p>
+
+        <div class="space-y-4">
+            <!-- Pre-built useful rules (state loaded from persistent preferences) -->
+            <div class="border border-emerald-800 bg-emerald-950/20 rounded-2xl p-4">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="font-medium flex items-center gap-2">
+                            Auto-suppress external HTTPS from known Home Assistant devices
+                            {% if rules.suppress_ha_https %}<span class="text-[10px] px-2 py-0.5 bg-emerald-900 rounded-full">ON</span>{% else %}<span class="text-[10px] px-2 py-0.5 bg-zinc-700 rounded-full">OFF</span>{% endif %}
+                        </div>
+                        <div class="text-xs text-zinc-400 mt-1">Lights, sensors, switches, etc. talking to the internet over 443 are almost always normal cloud polling.</div>
+                    </div>
+                    <input type="checkbox" {% if rules.suppress_ha_https %}checked{% endif %} onchange="saveRulePreference('suppress_ha_https', this.checked)" class="accent-emerald-500 mt-1">
+                </div>
+            </div>
+
+            <div class="border border-emerald-800 bg-emerald-950/20 rounded-2xl p-4">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="font-medium flex items-center gap-2">
+                            Auto-suppress mDNS / multicast (port 5353) from HA devices
+                            {% if rules.suppress_mdns %}<span class="text-[10px] px-2 py-0.5 bg-emerald-900 rounded-full">ON</span>{% else %}<span class="text-[10px] px-2 py-0.5 bg-zinc-700 rounded-full">OFF</span>{% endif %}
+                        </div>
+                        <div class="text-xs text-zinc-400 mt-1">Extremely common and harmless for smart home devices.</div>
+                    </div>
+                    <input type="checkbox" {% if rules.suppress_mdns %}checked{% endif %} onchange="saveRulePreference('suppress_mdns', this.checked)" class="accent-emerald-500 mt-1">
+                </div>
+            </div>
+
+            <div class="border border-emerald-800 bg-emerald-950/20 rounded-2xl p-4">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="font-medium flex items-center gap-2">
+                            Treat repeated internal port 9999 traffic as expected service communication
+                            {% if rules.suppress_9999 %}<span class="text-[10px] px-2 py-0.5 bg-emerald-900 rounded-full">ON</span>{% else %}<span class="text-[10px] px-2 py-0.5 bg-zinc-700 rounded-full">OFF</span>{% endif %}
+                        </div>
+                        <div class="text-xs text-zinc-400 mt-1">Very common pattern in Home Assistant environments between local devices.</div>
+                    </div>
+                    <input type="checkbox" {% if rules.suppress_9999 %}checked{% endif %} onchange="saveRulePreference('suppress_9999', this.checked)" class="accent-emerald-500 mt-1">
+                </div>
+            </div>
+
+            <div class="border border-amber-800 bg-amber-950/20 rounded-2xl p-4">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <div class="font-medium">Unknown devices doing unusual things → higher priority</div>
+                        {% if rules.escalate_unknown %}<span class="text-[10px] px-2 py-0.5 bg-amber-900 rounded-full">ON</span>{% else %}<span class="text-[10px] px-2 py-0.5 bg-zinc-700 rounded-full">OFF</span>{% endif %}
+                        <div class="text-xs text-zinc-400 mt-1">If we have no Home Assistant record for the IP and it shows repeated external connections → treat as more suspicious.</div>
+                    </div>
+                    <input type="checkbox" {% if rules.escalate_unknown %}checked{% endif %} onchange="saveRulePreference('escalate_unknown', this.checked)" class="accent-amber-500 mt-1">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Suggested Automation Rules -->
+    <div class="section-card rounded-3xl p-6 mb-6 border border-purple-800/50">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-xl font-semibold flex items-center gap-2">
+                    AI Suggested Rules
+                    <span class="text-xs px-2 py-0.5 bg-purple-900/60 text-purple-300 rounded-full">EXPERIMENTAL</span>
+                </h2>
+                <p class="text-xs text-zinc-400 mt-1">
+                    RocketLogAI can analyze device behavior and network patterns, then suggest useful automation rules.
+                    <strong>These are always disabled by default.</strong> A human must review and enable them.
+                </p>
+            </div>
+            <button onclick="loadAISuggestions()" class="px-3 py-1.5 text-sm rounded-xl bg-purple-900/70 hover:bg-purple-800 border border-purple-700">Refresh Suggestions</button>
+        </div>
+
+        <div id="ai-suggestions-container" class="space-y-3 text-sm">
+            <div class="text-zinc-400 text-xs">Loading AI suggestions...</div>
+        </div>
+
+        <div class="mt-4 text-[10px] text-zinc-500 border-t border-zinc-800 pt-3">
+            Example: The AI might notice “When John’s iPhone connects to the network, the living room lights usually turn on” and suggest a rule that calls Home Assistant.
+            You decide if it’s useful and safe.
+        </div>
+        <div class="mt-3 p-3 bg-amber-950/40 border border-amber-800 rounded-2xl text-xs text-amber-300">
+            <strong>Safety Note:</strong> When you enable an AI-suggested rule, RocketLogAI will attempt to execute the action (currently focused on Home Assistant calls). 
+            Always review the proposed action carefully before enabling. Execution is logged for audit.
+        </div>
+    </div>
+
+    <!-- Custom Rule Builder -->
+    <div class="section-card rounded-3xl p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-xl font-semibold">Custom Rules</h2>
+                <p class="text-xs text-zinc-400">Add your own suppression or escalation logic. These run after the built-in smart rules.</p>
+            </div>
+            <button onclick="showAddRuleForm()" class="px-3 py-1.5 text-sm rounded-xl bg-emerald-900/70 hover:bg-emerald-800 border border-emerald-800">+ Add Rule</button>
+        </div>
+
+        <div id="add-rule-form" class="hidden border border-zinc-800 bg-zinc-950 rounded-2xl p-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input id="rule-name" type="text" placeholder="Rule name (e.g. Ignore printer chatter)" class="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                <input id="rule-condition" type="text" placeholder="Condition (e.g. 9100 or printer or external)" class="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm md:col-span-2">
+                <select id="rule-action" class="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                    <option value="iot_expected">Suppress (iot_expected)</option>
+                    <option value="escalate">Escalate severity</option>
+                    <option value="severity:high">Force severity high</option>
+                </select>
+            </div>
+            <div class="mt-3 flex gap-2">
+                <button onclick="saveCustomRule()" class="px-4 py-2 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500">Save Rule</button>
+                <button onclick="hideAddRuleForm()" class="px-4 py-2 text-sm rounded-xl bg-zinc-800">Cancel</button>
+            </div>
+        </div>
+
+        {% if custom_rules %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs text-zinc-400 border-b border-zinc-800">
+                        <th class="py-2 pr-4">Name</th>
+                        <th class="py-2 pr-4">Condition</th>
+                        <th class="py-2 pr-4">Action</th>
+                        <th class="py-2 pr-4">Enabled</th>
+                        <th class="py-2"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cr in custom_rules %}
+                    <tr class="border-b border-zinc-900">
+                        <td class="py-2 pr-4 font-medium">{{ cr.name }}</td>
+                        <td class="py-2 pr-4 font-mono text-xs text-zinc-400">{{ cr.condition or '-' }}</td>
+                        <td class="py-2 pr-4 text-xs"><span class="px-2 py-0.5 bg-zinc-800 rounded">{{ cr.action }}</span></td>
+                        <td class="py-2 pr-4">
+                            <input type="checkbox" {% if cr.enabled %}checked{% endif %} onchange="toggleCustomRule({{ cr.id }}, this.checked)">
+                        </td>
+                        <td class="py-2 text-right">
+                            <button onclick="deleteCustomRule({{ cr.id }})" class="text-xs text-red-400 hover:text-red-300">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-sm text-zinc-400 border border-dashed border-zinc-800 rounded-2xl p-4">No custom rules yet. Add some for printer traffic, specific internal services, or your own device patterns.</div>
+        {% endif %}
+    </div>
+
+    <div class="section-card rounded-3xl p-6">
+        <h2 class="text-xl font-semibold mb-4">How This Helps You Right Now</h2>
+        <ul class="space-y-2 text-sm text-zinc-300">
+            <li>• When the LLM sees "external IP + HTTPS", the system now checks if the source device exists in Home Assistant.</li>
+            <li>• If it does, and the device type is something like a light, sensor, or switch → it can auto-mark it as normal IoT chatter.</li>
+            <li>• You stop getting the same generic "medium" alert 50 times a day.</li>
+            <li>• Real anomalies (new devices, unusual ports, unknown hosts) still bubble up for your review.</li>
+        </ul>
+        <p class="text-xs text-zinc-500 mt-6">
+            This is exactly the "reach out to the device, figure out what it is, decide if the activity is normal" behavior you described.
+        </p>
+        <div class="mt-4 p-3 bg-purple-950/30 border border-purple-800 rounded-2xl text-xs text-purple-300">
+            <strong>AI Suggestions:</strong> The system can now propose new automation rules (e.g. "When John’s iPhone appears, turn on living room lights"). 
+            These are <strong>always created disabled</strong>. You must explicitly review and enable them on this page.
+        </div>
+    </div>
+</div>
+
+<script>
+async function saveRulePreference(rule, enabled) {
+    const res = await fetch('/api/automation/preferences', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({[rule]: enabled})
+    });
+    const data = await res.json();
+    // Simple toast feedback (no reliance on event)
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 bg-zinc-800 text-emerald-300 px-4 py-2 rounded-xl text-sm shadow-lg';
+    toast.textContent = data.message || `Preference for "${rule}" saved`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2200);
+    // Optional: refresh to show ON/OFF badges update
+    setTimeout(() => location.reload(), 800);
+}
+
+function showAddRuleForm() {
+    document.getElementById('add-rule-form').classList.remove('hidden');
+    document.getElementById('add-rule-form').classList.add('flex', 'flex-col');
+}
+function hideAddRuleForm() {
+    document.getElementById('add-rule-form').classList.add('hidden');
+    document.getElementById('add-rule-form').classList.remove('flex', 'flex-col');
+}
+
+async function saveCustomRule() {
+    const payload = {
+        name: document.getElementById('rule-name').value || 'Custom rule',
+        condition: document.getElementById('rule-condition').value,
+        action: document.getElementById('rule-action').value,
+        enabled: true
+    };
+    const res = await fetch('/api/automation/custom-rules', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+        location.reload();
+    } else {
+        alert('Failed to save rule');
+    }
+}
+
+async function toggleCustomRule(id, enabled) {
+    await fetch(`/api/automation/custom-rules/${id}/toggle`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled})
+    });
+    // no full reload needed for toggle; the checkbox already reflects intent
+}
+
+async function deleteCustomRule(id) {
+    if (!confirm('Delete this custom rule?')) return;
+    await fetch(`/api/automation/custom-rules/${id}`, {method: 'DELETE'});
+    location.reload();
+}
+
+// --- AI Suggestions ---
+async function loadAISuggestions() {
+    const container = document.getElementById('ai-suggestions-container');
+    container.innerHTML = '<div class="text-zinc-400 text-xs">Loading suggestions from AI...</div>';
+
+    try {
+        const res = await fetch('/api/automation/suggestions');
+        const data = await res.json();
+        const suggestions = data.suggestions || [];
+
+        if (suggestions.length === 0) {
+            container.innerHTML = '<div class="text-zinc-400 text-xs p-2">No AI suggestions yet. The system will propose rules as it learns your environment.</div>';
+            return;
+        }
+
+        let html = '';
+        suggestions.forEach(s => {
+            const statusColor = s.status === 'enabled' ? 'emerald' : s.status === 'rejected' ? 'red' : 'purple';
+            html += `
+                <div class="border border-zinc-700 bg-zinc-950 rounded-2xl p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-medium">${s.name}</div>
+                            <div class="text-xs text-zinc-400 mt-0.5">${s.description || ''}</div>
+                            <div class="text-xs mt-2"><span class="text-zinc-500">Proposed action:</span> ${s.proposed_action || ''}</div>
+                            <div class="text-xs text-purple-400 mt-1">${s.reason || ''}</div>
+                        </div>
+                        <div class="text-right ml-4">
+                            <div class="text-xs px-2 py-0.5 rounded bg-${statusColor}-900 text-${statusColor}-300">${s.status}</div>
+                            <div class="text-[10px] text-zinc-500 mt-1">${(s.confidence * 100).toFixed(0)}% confidence</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 flex gap-2">
+                        <button onclick="updateSuggestionStatus(${s.id}, 'enabled')" class="text-xs px-3 py-1 rounded-xl bg-emerald-900/70 hover:bg-emerald-800">Enable</button>
+                        <button onclick="updateSuggestionStatus(${s.id}, 'disabled')" class="text-xs px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700">Keep Disabled</button>
+                        <button onclick="updateSuggestionStatus(${s.id}, 'rejected', 'Not useful')" class="text-xs px-3 py-1 rounded-xl bg-red-900/70 hover:bg-red-800">Reject</button>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<div class="text-red-400 text-xs">Failed to load suggestions.</div>';
+    }
+}
+
+async function updateSuggestionStatus(id, status, notes = '') {
+    await fetch(`/api/automation/suggestions/${id}/status`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ status, notes })
+    });
+    loadAISuggestions();
+}
+
+// Auto-load suggestions when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Load AI suggestions if the container exists
+    if (document.getElementById('ai-suggestions-container')) {
+        setTimeout(loadAISuggestions, 800);
+    }
+});
+</script>
+{% endblock %}

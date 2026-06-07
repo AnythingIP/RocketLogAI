@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Daily Briefing{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-end justify-between mb-6">
+        <div>
+            <h1 class="font-display text-4xl tracking-tighter font-semibold flex items-center gap-3">
+                📅 Daily Briefing
+                <span class="text-xs px-3 py-1 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-800">Operator Companion</span>
+            </h1>
+            <p class="text-zinc-400 mt-1">One stop, actually interesting recap of what the server had to deal with. Talk to the crew like a sharp coworker who was up all night with the machines.</p>
+        </div>
+        <div class="flex gap-2">
+            <a href="/" class="px-4 py-2 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">← Dashboard</a>
+            <button onclick="loadPastBriefings()" 
+                    class="px-4 py-2 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Past Shifts</button>
+        </div>
+    </div>
+
+    <!-- Window Controls -->
+    <div class="section-card rounded-3xl p-5 mb-6">
+        <div class="flex flex-wrap items-end gap-3">
+            <div class="flex-1 min-w-[220px]">
+                <label class="block text-xs text-zinc-400 mb-1">What shift / day?</label>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="quickWindow('rolling_24h')" class="px-3 py-1.5 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 active:bg-emerald-900/30">Last 24h (rolling)</button>
+                    <button onclick="quickWindow('calendar_day')" class="px-3 py-1.5 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 active:bg-emerald-900/30">Today (calendar)</button>
+                    <button onclick="quickWindow('shift')" class="px-3 py-1.5 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 active:bg-emerald-900/30">My Shift</button>
+                    <button onclick="showCustomWindow()" class="px-3 py-1.5 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">Custom / Historical</button>
+                </div>
+            </div>
+
+            <div class="flex-1 min-w-[260px]">
+                <label class="block text-xs text-zinc-400 mb-1">Or describe it (Tuesday, yesterday, 2026-05-12, my overnight shift...)</label>
+                <div class="flex gap-2">
+                    <input id="natural-window" type="text" placeholder="what happened last Tuesday?" 
+                           class="flex-1 bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-2 text-sm"
+                           onkeydown="if (event.key === 'Enter') generateFromNatural()">
+                    <button onclick="generateFromNatural()" 
+                            class="px-5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">Ask the Crew</button>
+                </div>
+            </div>
+
+            <div class="text-[10px] text-zinc-500 max-w-[220px]">
+                Normal windows are fast. Big historical days will warn you and may take 30-90s+ while the model reads the full evidence. We'll show progress.
+            </div>
+        </div>
+
+        <!-- Advanced shift controls (hidden by default) -->
+        <div id="shift-controls" class="hidden mt-4 pt-4 border-t border-zinc-800 grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+            <div>
+                <label class="text-xs text-zinc-400">Date (YYYY-MM-DD or leave for today)</label>
+                <input id="shift-day" type="text" placeholder="2026-05-25" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Shift start (HH:MM)</label>
+                <input id="shift-start" type="text" value="06:00" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label class="text-xs text-zinc-400">Shift end (HH:MM)</label>
+                <input id="shift-end" type="text" value="18:00" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm">
+            </div>
+            <div class="flex items-end">
+                <button onclick="generateWithShift()" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-sm">Generate Shift Briefing</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress / Warning area -->
+    <div id="progress-area" class="hidden mb-4 p-4 rounded-2xl border border-amber-800 bg-amber-950/20 text-sm">
+        <div class="flex items-center gap-3">
+            <div id="progress-text" class="font-medium">The crew is compiling the shift report...</div>
+            <div class="flex-1 bg-zinc-800 h-1.5 rounded">
+                <div id="progress-bar" class="bg-emerald-500 h-1.5 rounded transition-all" style="width: 10%"></div>
+            </div>
+            <div id="progress-pct" class="tabular-nums text-xs text-emerald-400 w-10 text-right">10%</div>
+        </div>
+        <div id="progress-detail" class="text-[10px] text-zinc-500 mt-1">Gathering logs, threats, monitor results and activity for the window...</div>
+    </div>
+
+    <!-- Chat with the crew (AI Assistant chat panel) - MOVED TO TOP per Phase 1 -->
+    <div class="section-card rounded-3xl p-6 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <div class="font-medium flex items-center gap-2">
+                <span>💬</span> Talk to the Crew (AI Assistant)
+            </div>
+            <button onclick="clearCurrentChat()" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Clear chat for this briefing</button>
+            <button onclick="exportCurrentBriefing()" class="text-xs px-3 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Export .md</button>
+        </div>
+
+        <div id="chat-history" class="min-h-[180px] max-h-[320px] overflow-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-3 text-sm mb-3">
+            <div class="text-zinc-500 text-xs">Generate or load a briefing with the controls above (the 24h summary/readout will appear below). Chat here for follow-ups like "tell me more about the disk thing", "who was brute forcing us", "draft a script for the flapping monitor".</div>
+        </div>
+
+        <div class="flex gap-2">
+            <input id="chat-input" type="text" placeholder="Ask the crew anything about this window..." 
+                   class="flex-1 bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm"
+                   onkeydown="if (event.key === 'Enter') sendChatMessage()">
+            <button onclick="sendChatMessage()" 
+                    class="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">Send</button>
+        </div>
+        <div class="text-[10px] text-zinc-500 mt-2">The crew stays grounded in the actual data for this window. Every turn is logged in Server Activity.</div>
+    </div>
+
+    <!-- The Briefing / 24h summary/readout (kept BELOW the chat per Phase 1) -->
+    <div id="briefing-card" class="section-card rounded-3xl p-6 mb-6 hidden">
+        <div class="flex items-center gap-2 mb-3">
+            <span class="text-emerald-400">🧠</span>
+            <span class="font-semibold">The Crew's Report (24h Summary)</span>
+            <span id="briefing-meta" class="text-xs text-zinc-500 ml-auto"></span>
+        </div>
+        <div id="briefing-narrative" class="prose prose-invert text-sm leading-relaxed whitespace-pre-wrap"></div>
+
+        <div id="briefing-highlights" class="mt-4"></div>
+
+        <div class="mt-4 text-[10px] text-zinc-500">
+            This recap is grounded in the actual data RocketLogAI recorded. (Chat panel is above.)
+        </div>
+    </div>
+
+    <!-- Past briefings modal-ish area -->
+    <div id="past-briefings" class="hidden mt-6 section-card rounded-3xl p-5">
+        <div class="font-medium mb-3">Previous shifts (click to load)</div>
+        <div id="past-list" class="text-sm space-y-1"></div>
+    </div>
+</div>
+
+<script>
+let currentBriefingId = null;
+let currentWindow = { type: 'rolling_24h' };
+let chatHistory = [];
+
+function showProgress(message, pct, detail) {
+    const area = document.getElementById('progress-area');
+    area.classList.remove('hidden');
+    document.getElementById('progress-text').textContent = message || 'Working...';
+    document.getElementById('progress-bar').style.width = (pct || 10) + '%';
+    document.getElementById('progress-pct').textContent = (pct || 10) + '%';
+    if (detail) document.getElementById('progress-detail').textContent = detail;
+}
+
+function hideProgress() {
+    document.getElementById('progress-area').classList.add('hidden');
+}
+
+async function generateBriefing(params) {
+    showProgress('Resolving the window...', 8, 'Talking to the data layer...');
+    
+    const res = await fetch('/api/daily/briefing', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(params || {})
+    });
+    const data = await res.json();
+
+    if (data.error) {
+        hideProgress();
+        alert('Generation failed: ' + data.error);
+        return;
+    }
+
+    if (data.job_id) {
+        // Poll for progress (supports the long historical case)
+        await pollJob(data.job_id);
+    } else if (data.briefing_id) {
+        // Immediate result path
+        currentBriefingId = data.briefing_id;
+        renderBriefing(data);
+        hideProgress();
+        loadChatHistory();
+    }
+}
+
+async function pollJob(jobId) {
+    const maxPolls = 120; // ~2 minutes
+    let pollCount = 0;
+    const interval = setInterval(async () => {
+        pollCount++;
+        try {
+            const r = await fetch('/api/daily/briefing/status/' + jobId);
+            const j = await r.json();
+            if (j.progress) {
+                showProgress(j.message || 'The crew is thinking...', j.progress, j.detail);
+            }
+            if (j.status === 'done' && j.briefing_id) {
+                clearInterval(interval);
+                hideProgress();
+                currentBriefingId = j.briefing_id;
+                renderBriefing(j);
+                loadChatHistory();
+            } else if (j.status === 'error') {
+                clearInterval(interval);
+                hideProgress();
+                alert('Briefing generation error: ' + (j.error || 'unknown'));
+            }
+        } catch (e) {}
+        if (pollCount > maxPolls) {
+            clearInterval(interval);
+            hideProgress();
+            alert('Still working on a very large day. Check back in a minute or try a smaller window.');
+        }
+    }, 1500);
+}
+
+function renderBriefing(data) {
+    const card = document.getElementById('briefing-card');
+    card.classList.remove('hidden');
+
+    document.getElementById('briefing-meta').textContent = (data.window_label || '') + ' • ' + (data.model || 'local model');
+
+    const narr = document.getElementById('briefing-narrative');
+    narr.innerHTML = formatAsHtml(data.narrative || 'The crew is still processing the evidence...');
+    narr.className = 'prose prose-invert text-sm leading-relaxed';  // better spacing
+
+    const hl = document.getElementById('briefing-highlights');
+    hl.innerHTML = '';
+    if (data.highlights && data.highlights.length) {
+        const div = document.createElement('div');
+        div.className = 'mt-3 text-sm';
+        div.innerHTML = '<div class="text-emerald-400 text-xs mb-1 font-medium">WHAT STOOD OUT</div>';
+        data.highlights.forEach(h => {
+            const p = document.createElement('div');
+            p.className = 'mb-1 text-zinc-300 flex gap-2';
+            p.innerHTML = '<span class="text-emerald-400">•</span> <span>' + (typeof h === 'string' ? h : (h.title || h)) + '</span>';
+            div.appendChild(p);
+        });
+        hl.appendChild(div);
+    }
+
+    // If the briefing came with suggested actions, show quick chips
+    if (data.proposed_actions && data.proposed_actions.length) {
+        const actDiv = document.createElement('div');
+        actDiv.className = 'mt-3 text-xs';
+        actDiv.innerHTML = '<span class="text-purple-400">Suggested moves:</span> ';
+        data.proposed_actions.forEach(a => {
+            const chip = document.createElement('span');
+            chip.className = 'inline-block mr-1 mb-1 px-2 py-0.5 bg-purple-900/30 border border-purple-800 rounded';
+            chip.textContent = (a.title || a);
+            actDiv.appendChild(chip);
+        });
+        hl.appendChild(actDiv);
+    }
+}
+
+function formatAsHtml(text) {
+    if (!text) return '';
+    // Basic escaping (LLM output is trusted but belt + suspenders)
+    let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    // Turn **bold** into strong
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>');
+
+    // Turn `code` into inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="bg-zinc-900 px-1 py-0.5 rounded text-emerald-300 font-mono text-[0.9em]">$1</code>');
+
+    // Split into paragraphs on blank lines ( \n\n )
+    const paragraphs = html.split(/\n\s*\n+/).map(p => p.trim()).filter(Boolean);
+
+    html = paragraphs.map(p => {
+        // Within paragraph, convert bullet lines to list items
+        let lines = p.split('\n');
+        let inList = false;
+        let out = [];
+        for (let line of lines) {
+            const bulletMatch = line.match(/^\s*[-*•]\s+(.*)$/);
+            if (bulletMatch) {
+                if (!inList) {
+                    out.push('<ul class="list-disc ml-5 my-1">');
+                    inList = true;
+                }
+                out.push('<li>' + bulletMatch[1] + '</li>');
+            } else {
+                if (inList) {
+                    out.push('</ul>');
+                    inList = false;
+                }
+                out.push(line);
+            }
+        }
+        if (inList) out.push('</ul>');
+        let paraContent = out.join('<br>');  // single newlines become soft breaks inside para
+        return '<p class="mb-2">' + paraContent + '</p>';
+    }).join('');
+
+    return html;
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const q = input.value.trim();
+    if (!q || !currentBriefingId) return;
+
+    const historyEl = document.getElementById('chat-history');
+    // append user bubble
+    const userDiv = document.createElement('div');
+    userDiv.className = 'bg-zinc-900 border border-zinc-700 rounded-2xl p-3 self-end ml-8 prose prose-invert prose-sm max-w-none';
+    userDiv.innerHTML = `<div class="text-[10px] text-zinc-500 mb-0.5">You</div>${q}`;
+    historyEl.appendChild(userDiv);
+    historyEl.scrollTop = historyEl.scrollHeight;
+
+    input.value = '';
+    input.disabled = true;
+
+    try {
+        const res = await fetch('/api/daily/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ briefing_id: currentBriefingId, message: q })
+        });
+        const data = await res.json();
+
+        const crewDiv = document.createElement('div');
+        crewDiv.className = 'bg-emerald-950/30 border border-emerald-900 rounded-2xl p-3 mr-8 prose prose-invert prose-sm max-w-none';
+        crewDiv.innerHTML = `<div class="text-[10px] text-emerald-400 mb-0.5">The Crew</div>${formatAsHtml(data.response || 'No reply.')}`;
+        historyEl.appendChild(crewDiv);
+        historyEl.scrollTop = historyEl.scrollHeight;
+
+        // If the crew proposed concrete actions/scripts, surface buttons
+        if (data.suggested_actions && data.suggested_actions.length) {
+            const actions = document.createElement('div');
+            actions.className = 'mt-2 text-xs flex flex-wrap gap-2';
+            data.suggested_actions.forEach(act => {
+                const btn = document.createElement('button');
+                btn.className = 'px-2 py-0.5 rounded bg-purple-800 hover:bg-purple-700 text-white';
+                btn.textContent = act.label || 'Take action';
+                btn.onclick = () => handleSuggestedAction(act);
+                actions.appendChild(btn);
+            });
+            crewDiv.appendChild(actions);
+        }
+    } catch (e) {
+        const err = document.createElement('div');
+        err.className = 'text-red-400 text-xs';
+        err.textContent = 'Chat error. Try again.';
+        historyEl.appendChild(err);
+    } finally {
+        input.disabled = false;
+        input.focus();
+    }
+}
+
+function handleSuggestedAction(act) {
+    if (act.type === 'script' || act.prompt) {
+        // For now, feed it back into chat so the LLM can generate a real script using the daily context
+        const input = document.getElementById('chat-input');
+        input.value = act.prompt || 'Draft a safe remediation script for the issue we just discussed, using the facts from today.';
+        sendChatMessage();
+    } else if (act.type === 'goto_monitors') {
+        window.location.href = '/monitors';
+    } else {
+        alert('Action noted: ' + (act.label || JSON.stringify(act)));
+    }
+}
+
+function quickWindow(type) {
+    currentWindow = { type };
+    const params = { window: type };
+    if (type === 'calendar_day') params.day = new Date().toISOString().slice(0,10);
+    generateBriefing(params);
+}
+
+function showCustomWindow() {
+    document.getElementById('shift-controls').classList.toggle('hidden');
+}
+
+async function generateWithShift() {
+    const day = document.getElementById('shift-day').value.trim() || null;
+    const start = document.getElementById('shift-start').value.trim();
+    const end = document.getElementById('shift-end').value.trim();
+    generateBriefing({ window: 'shift', day, shift_start: start, shift_end: end });
+}
+
+async function generateFromNatural() {
+    const val = document.getElementById('natural-window').value.trim();
+    if (!val) return;
+    // Send the raw description; backend resolver + LLM will interpret
+    generateBriefing({ window: 'custom', natural: val });
+}
+
+async function loadChatHistory() {
+    if (!currentBriefingId) return;
+    const historyEl = document.getElementById('chat-history');
+    historyEl.innerHTML = '<div class="text-zinc-500 text-xs">Loading conversation...</div>';
+    try {
+        const res = await fetch('/api/daily/briefing/' + currentBriefingId + '/messages');
+        const data = await res.json();
+        historyEl.innerHTML = '';
+        (data.messages || []).forEach(m => {
+            const d = document.createElement('div');
+            if (m.role === 'user') {
+                d.className = 'bg-zinc-900 border border-zinc-700 rounded-2xl p-3 self-end ml-8 prose prose-invert prose-sm max-w-none';
+                d.innerHTML = `<div class="text-[10px] text-zinc-500 mb-0.5">You</div>${formatAsHtml(m.content)}`;
+            } else {
+                d.className = 'bg-emerald-950/30 border border-emerald-900 rounded-2xl p-3 mr-8 prose prose-invert prose-sm max-w-none';
+                d.innerHTML = `<div class="text-[10px] text-emerald-400 mb-0.5">The Crew</div>${formatAsHtml(m.content)}`;
+            }
+            historyEl.appendChild(d);
+        });
+        if (!data.messages || !data.messages.length) {
+            historyEl.innerHTML = '<div class="text-zinc-500 text-xs">The 24h summary is below. Ask anything about this window (chat stays grounded in the briefing data).</div>';
+        }
+        historyEl.scrollTop = historyEl.scrollHeight;
+    } catch (e) {
+        historyEl.innerHTML = '<div class="text-red-400">Could not load chat history.</div>';
+    }
+}
+
+async function loadPastBriefings() {
+    const container = document.getElementById('past-briefings');
+    const list = document.getElementById('past-list');
+    container.classList.remove('hidden');
+    list.innerHTML = 'Loading...';
+    try {
+        const res = await fetch('/api/daily/briefings');
+        const data = await res.json();
+        list.innerHTML = '';
+        if (!data.briefings || !data.briefings.length) {
+            list.innerHTML = '<div class="text-zinc-500">No saved briefings yet. Generate one and it will be remembered.</div>';
+            return;
+        }
+        data.briefings.forEach(b => {
+            const row = document.createElement('div');
+            row.className = 'px-3 py-2 hover:bg-zinc-900 cursor-pointer rounded-xl border border-transparent hover:border-zinc-700';
+            row.innerHTML = `<span class="font-mono text-emerald-400">${b.day || ''}</span> — ${b.window_label || b.window_type} <span class="text-xs text-zinc-500">(${b.generated_at ? b.generated_at.substring(0,16) : ''})</span>`;
+            row.onclick = () => loadExistingBriefing(b.id);
+            list.appendChild(row);
+        });
+    } catch (e) {
+        list.innerHTML = 'Failed to load history.';
+    }
+}
+
+async function loadExistingBriefing(id) {
+    const res = await fetch('/api/daily/briefing/' + id);
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    currentBriefingId = id;
+    renderBriefing(data);
+    document.getElementById('past-briefings').classList.add('hidden');
+    loadChatHistory();
+}
+
+function clearCurrentChat() {
+    if (!currentBriefingId) return;
+    if (!confirm('Clear the chat transcript for this briefing? (The report stays)')) return;
+    const hist = document.getElementById('chat-history');
+    hist.innerHTML = '<div class="text-zinc-500 text-xs">Chat cleared for this briefing. The original report remains.</div>';
+    // We could call an API to delete messages, but for now just UI clear is fine (or implement later).
+}
+
+async function exportCurrentBriefing() {
+    if (!currentBriefingId) {
+        alert('Generate or load a briefing first.');
+        return;
+    }
+    try {
+        const res = await fetch('/api/daily/briefing/' + currentBriefingId + '/export');
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+        const blob = new Blob([data.markdown], {type: 'text/markdown'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = data.filename || 'daily-briefing.md';
+        a.click();
+    } catch (e) {
+        alert('Export failed.');
+    }
+}
+
+async function initDaily() {
+    // Auto-load a default rolling 24h briefing on first visit (fast path)
+    // You can comment this out if you prefer the page to start empty.
+    setTimeout(() => {
+        // Only auto if nothing loaded yet
+        if (!document.getElementById('briefing-card').classList.contains('hidden')) return;
+        generateBriefing({ window: 'rolling_24h' });
+    }, 350);
+}
+
+document.addEventListener('DOMContentLoaded', initDaily);
+</script>
+{% endblock %}

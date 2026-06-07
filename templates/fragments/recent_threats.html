@@ -1,0 +1,61 @@
+<div class="space-y-2 text-sm" hx-get="/fragments/recent-threats" hx-trigger="every 25s" hx-swap="outerHTML">
+    {% if threats %}
+        {% for t in threats %}
+        <div class="threat-card flex gap-3 bg-zinc-950/70 rounded-2xl px-4 py-3 border border-zinc-800/80 group">
+            <div class="pt-0.5 flex flex-col gap-0.5">
+                <span class="font-mono text-xs font-bold px-2 py-0.5 rounded-lg 
+                    {% if t.severity == 'critical' %}bg-red-950 text-red-400{% elif t.severity == 'high' %}bg-orange-950 text-orange-400{% else %}bg-yellow-950 text-yellow-400{% endif %}">
+                    {{ t.severity }}
+                </span>
+                {% if t.device_risk %}
+                <span class="font-mono text-[9px] px-1 py-px rounded {{ 'bg-red-900 text-red-300' if t.device_risk > 70 else 'bg-amber-900 text-amber-300' if t.device_risk > 50 else 'bg-emerald-900 text-emerald-300' }}" title="Device risk ({{ t.device_trust or 'normal' }})">
+                    r{{ t.device_risk }}
+                </span>
+                {% endif %}
+            </div>
+            <div class="flex-1 min-w-0 text-sm">
+                <div class="font-medium leading-tight">{{ t.description }}</div>
+                <div class="text-xs text-zinc-500 mt-0.5">
+                    {{ t.hostname or 'unknown' }} / {{ t.appname or '?' }} • {{ t.created_at[:16] }}
+                    {% if t.device_vendor %}
+                        <span class="ml-1 text-emerald-400">
+                            {% if t.device_vendor_icon %}{{ t.device_vendor_icon }} {% endif %}{{ t.device_vendor }}
+                        </span>
+                    {% endif %}
+                </div>
+
+                <div class="flex items-center gap-2 mt-2">
+                    {% if t.new_device %}
+                        <span class="text-[9px] px-1.5 py-px rounded bg-sky-900 text-sky-300 font-semibold">NEW DEVICE</span>
+                    {% endif %}
+                    <span class="status-pill 
+                        {% if t.status == 'false_positive' %}bg-zinc-800 text-zinc-400{% elif t.status == 'acknowledged' %}bg-emerald-900 text-emerald-300{% else %}bg-orange-900 text-orange-300{% endif %}">
+                        {{ t.status or 'open' }}
+                    </span>
+
+                    {% if (t.status or 'open') == 'open' %}
+                    <button onclick="showNotesModal({{ t.id }}, '{{ t.description|replace("'", "\'") }}', 'acknowledged')"
+                            class="text-[10px] px-2 py-px rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 transition-colors">
+                        Ack
+                    </button>
+                    <button onclick="showNotesModal({{ t.id }}, '{{ t.description|replace("'", "\'") }}', 'false_positive')"
+                            class="text-[10px] px-2 py-px rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 transition-colors">
+                        False +
+                    </button>
+                    {% endif %}
+                </div>
+
+                {% if t.advice %}
+                <div class="mt-2 pt-2 border-t border-zinc-800 text-[10px] text-amber-300/90 space-y-px">
+                    {% for tip in t.advice[:1] %}
+                    <div>→ {{ tip }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="text-zinc-500 text-sm py-3 px-1">No open threats. Nice work.</div>
+    {% endif %}
+</div>

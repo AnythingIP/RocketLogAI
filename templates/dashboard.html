@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Dashboard{% endblock %}
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">{{ cfg.branding.instance_name if cfg and cfg.branding and cfg.branding.instance_name else 'Security Overview' }}</h1>
+        <p class="text-zinc-400 mt-1">Real-time visibility into your infrastructure</p>
+        {% if last_analysis %}
+        <div class="text-[10px] text-emerald-400 mt-0.5">Last analysis: {{ last_analysis.started_at[:19] }} • {{ last_analysis.logs_analyzed }} logs • {{ last_analysis.threats_found }} threats</div>
+        {% endif %}
+        <div class="text-[10px] text-zinc-500 mt-0.5">
+          LLM: {% if cfg and cfg.llm and (cfg.llm.base_url or (cfg.llm.servers|length > 0)) %}configured &amp; prioritized{% else %}not configured{% endif %}
+          {% if cfg and cfg.web and cfg.web.domain_enabled %} • Domain AD: enabled{% endif %}
+        </div>
+    </div>
+    <div class="flex gap-2">
+        <a href="/threats?status=open" 
+           class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 flex items-center gap-2 transition-all active:scale-[0.985]">
+            <span>Open Threats</span>
+        </a>
+        {% if ai_suggestion_count and ai_suggestion_count > 0 %}
+        <a href="/automation" class="px-4 py-2 text-sm rounded-xl bg-purple-900/70 hover:bg-purple-800 text-purple-300 border border-purple-700 flex items-center gap-2 transition-all active:scale-[0.985]">
+            <span>AI Suggestions ({{ ai_suggestion_count }})</span>
+        </a>
+        {% endif %}
+        <button onclick="exportThreats('csv')" 
+                class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 flex items-center gap-2 transition-all active:scale-[0.985]">
+            <span>Export CSV</span>
+        </button>
+    </div>
+</div>
+
+<!-- Big Metrics -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mb-6">
+    <div class="section-card rounded-3xl p-5">
+        <div class="text-xs uppercase tracking-[1px] text-zinc-500">Total Logs</div>
+        <div class="text-5xl sm:text-6xl font-semibold tracking-tighter metric-value mt-1">{{ total_logs }}</div>
+        <div class="text-emerald-400 text-xs mt-2">All time in DB</div>
+    </div>
+    
+    <div class="section-card rounded-3xl p-5">
+        <div class="text-xs uppercase tracking-[1px] text-zinc-500">Open Threats</div>
+        <div class="text-5xl sm:text-6xl font-semibold tracking-tighter text-orange-400 metric-value mt-1" id="open-threat-count">—</div>
+        <div class="text-xs mt-2 flex items-center gap-1">
+            <span class="text-orange-400">Requires attention</span>
+        </div>
+    </div>
+    
+    <div class="section-card rounded-3xl p-5">
+        <div class="text-xs uppercase tracking-[1px] text-zinc-500">High/Critical</div>
+        <div class="text-5xl sm:text-6xl font-semibold tracking-tighter text-red-400 metric-value mt-1" id="high-sev-count">—</div>
+        <div class="text-xs mt-2 text-red-400">Last 7 days</div>
+    </div>
+    
+    <div class="section-card rounded-3xl p-5 flex flex-col justify-between">
+        <div>
+            <div class="text-xs uppercase tracking-[1px] text-zinc-500">AI Analyses Run</div>
+            <div class="text-5xl font-semibold tracking-tighter mt-1">{{ total_analyses }}</div>
+            <div class="text-[10px] text-emerald-400/80 mt-0.5">
+                {% if llm_analyses_24h %}{{ llm_analyses_24h }} with LLM in last 24h{% else %}{{ llm_analyses }} ever used the LLM{% endif %}
+            </div>
+        </div>
+        <div class="text-xs text-emerald-400">Powered by local LLM</div>
+    </div>
+</div>
+
+<!-- Daily Briefing Teaser (the new "one stop glance + talk to the crew" feature) -->
+<div class="section-card rounded-3xl p-5 mb-6 border border-emerald-900/40 bg-emerald-950/10">
+    <div class="flex items-center justify-between">
+        <div>
+            <div class="font-semibold flex items-center gap-2">
+                📅 Daily Briefing
+                <span class="text-[10px] px-2 py-px bg-emerald-900 text-emerald-300 rounded-full">Operator Companion</span>
+            </div>
+            <p class="text-xs text-zinc-400 mt-1">Entertaining recap of what the server actually dealt with. Chat with the crew, get step-by-step fixes, promote to monitors.</p>
+        </div>
+        <a href="/daily" class="px-4 py-2 text-sm rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition active:scale-[0.985]">Open Full Briefing →</a>
+    </div>
+    <div class="mt-3 text-[11px] text-emerald-400/80">Ask it about Tuesday, your shift, the weird monitor flap, or "draft the fix for the thing that happened at 3am".</div>
+</div>
+
+<!-- Device Intelligence Widget -->
+{% if device_intel %}
+<div class="section-card rounded-3xl p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="font-semibold flex items-center gap-2">
+                Device Intelligence
+                <span class="text-[10px] px-2 py-px bg-purple-950 text-purple-400 rounded-full">AI + History</span>
+            </div>
+            <p class="text-xs text-zinc-400 mt-1">
+                RocketLogAI watches per-device behavior, MAC stability, and uses AI to decide trust vs. investigate. 
+                It can now also identify the manufacturer from the MAC address (OUI lookup) and factor in whether the traffic pattern matches what that vendor’s devices typically do.
+            </p>
+        </div>
+        <a href="/devices" class="text-sm text-emerald-400 hover:underline font-medium">Manage Devices →</a>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-4">
+        <div class="bg-zinc-950 rounded-2xl p-4">
+            <div class="text-xs text-zinc-500">High Risk Devices</div>
+            <div class="text-3xl font-semibold tracking-tighter text-red-400 mt-1">{{ device_intel.high_risk_count }}</div>
+        </div>
+        <div class="bg-zinc-950 rounded-2xl p-4">
+            <div class="text-xs text-zinc-500">Need Investigation</div>
+            <div class="text-3xl font-semibold tracking-tighter text-orange-400 mt-1">{{ device_intel.needs_investigation_count }}</div>
+        </div>
+        <div class="bg-zinc-950 rounded-2xl p-4">
+            <div class="text-xs text-zinc-500">MAC Anomalies</div>
+            <div class="text-3xl font-semibold tracking-tighter text-amber-400 mt-1">{{ device_intel.mac_anomalies_count }}</div>
+        </div>
+        <div class="bg-emerald-950/60 border border-emerald-900 rounded-2xl p-4">
+            <div class="text-xs text-emerald-400">Trusted Devices</div>
+            <div class="text-3xl font-semibold tracking-tighter text-emerald-400 mt-1">{{ device_intel.trusted_count | default(0) }}</div>
+            {% if device_intel.trusted_devices %}
+            <div class="mt-1 text-[10px] text-emerald-300/70 truncate">
+                {% for d in device_intel.trusted_devices[:2] %}{{ d.vendor or d.ip }}{% if not loop.last %}, {% endif %}{% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        <div class="bg-zinc-950 rounded-2xl p-4 flex items-center">
+            <div>
+                <div class="text-xs text-zinc-500">AI-Assisted Decisions</div>
+                <div class="text-emerald-400 text-sm mt-1">Running on threats &amp; manual reassess</div>
+            </div>
+        </div>
+    </div>
+
+    {% if device_intel.investigate_devices %}
+    <div class="text-xs text-zinc-400 mb-2">Devices flagged for review (AI or MAC changes)</div>
+    <div class="flex flex-wrap gap-2">
+        {% for d in device_intel.investigate_devices %}
+        <a href="/devices/{{ d.ip }}" class="inline-flex items-center gap-2 text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-2xl">
+            <span class="font-mono">{{ d.ip }}</span>
+            {% if d.mac %}<span class="text-zinc-500">· {{ d.mac }}</span>{% endif %}
+            {% if d.ai_assessment and d.ai_assessment.verdict %}
+            <span class="text-purple-400">({{ d.ai_assessment.verdict }})</span>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Recently Connected Devices Widget -->
+{% if recent_devices %}
+<div class="section-card rounded-3xl p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <div class="font-semibold flex items-center gap-2">
+                Recently Connected Devices
+                <span class="text-[10px] px-2 py-px bg-sky-950 text-sky-400 rounded-full">Last seen</span>
+            </div>
+            <p class="text-xs text-zinc-400 mt-1">The most recent devices RocketLogAI has observed on your network (new or returning).</p>
+        </div>
+        <a href="/devices" class="text-sm text-emerald-400 hover:underline font-medium">See all →</a>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+        {% for d in recent_devices %}
+        <a href="/devices/{{ d.ip }}" class="inline-flex items-center gap-2 text-xs bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-3 py-1.5 rounded-2xl transition-all active:scale-[0.985]">
+            {% if d.vendor_icon %}<span class="text-base">{{ d.vendor_icon }}</span>{% endif %}
+            <span class="font-mono">{{ d.ip }}</span>
+            {% if d.vendor %}
+                <span class="text-zinc-400">· {{ d.vendor }}</span>
+            {% endif %}
+            <span class="text-[10px] text-zinc-500 ml-1">{{ d.last_seen[:16] if d.last_seen else '' }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="mt-3 text-[10px] text-zinc-500">
+        New or unusual devices will also appear here and can trigger alerts via the normal threat pipeline.
+    </div>
+</div>
+{% endif %}
+
+<!-- Charts Row -->
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+    <!-- Severity Distribution -->
+    <div class="lg:col-span-2 section-card rounded-3xl p-5">
+        <div class="flex justify-between items-center mb-4">
+            <div class="font-semibold">Threats by Severity</div>
+        </div>
+        <div class="chart-container h-[210px]">
+            <canvas id="severityChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Activity Over Time -->
+    <div class="lg:col-span-3 section-card rounded-3xl p-5">
+        <div class="flex justify-between items-center mb-4">
+            <div class="font-semibold">Threat Activity (Last 14 days)</div>
+        </div>
+        <div class="chart-container h-[210px]">
+            <canvas id="activityChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Top Hosts + Status Breakdown -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="section-card rounded-3xl p-5">
+        <div class="font-semibold mb-4">Top Attacking / Affected Hosts</div>
+        <div class="chart-container h-[240px]">
+            <canvas id="hostsChart"></canvas>
+        </div>
+    </div>
+
+    <div class="section-card rounded-3xl p-5">
+        <div class="font-semibold mb-4">Threat Status Overview</div>
+        <div class="chart-container h-[240px]">
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <!-- Live Threats -->
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="font-semibold flex items-center gap-2">
+                Live Threats
+                <span class="text-[10px] px-2 py-px bg-red-950 text-red-400 rounded-full">AUTO</span>
+            </div>
+            <a href="/threats" class="text-sm text-emerald-400 hover:underline font-medium">See all →</a>
+        </div>
+        
+        <div id="recent-threats" 
+             hx-get="/fragments/recent-threats" 
+             hx-trigger="load, every 20s" 
+             hx-swap="outerHTML">
+            <div class="py-8 text-center text-zinc-500">Loading threats...</div>
+        </div>
+    </div>
+
+    <!-- Recent AI Work -->
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="font-semibold">Recent AI Reasoning</div>
+            <a href="/analyses" class="text-sm text-emerald-400 hover:underline font-medium">History →</a>
+        </div>
+        
+        <div id="recent-analyses" 
+             hx-get="/fragments/recent-analyses" 
+             hx-trigger="load, every 30s" 
+             hx-swap="outerHTML">
+            <div class="py-8 text-center text-zinc-500">Loading analyses...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let severityChartInstance = null;
+    let activityChartInstance = null;
+
+    async function loadChartData() {
+        try {
+            // Severity chart (real data)
+            const sevRes = await fetch('/api/charts/severity');
+            const sevData = await sevRes.json();
+
+            const sevCtx = document.getElementById('severityChart');
+            if (sevCtx) {
+                if (severityChartInstance) severityChartInstance.destroy();
+                severityChartInstance = new Chart(sevCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: sevData.labels.length ? sevData.labels : ['No data'],
+                        datasets: [{
+                            data: sevData.data.length ? sevData.data : [1],
+                            backgroundColor: sevData.colors || ['#3f3f46'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '72%',
+                        plugins: { legend: { position: 'right', labels: { color: '#71717a', font: { size: 12 } } } }
+                    }
+                });
+            }
+
+            // Activity chart (real data)
+            const actRes = await fetch('/api/charts/activity');
+            const actData = await actRes.json();
+
+            const actCtx = document.getElementById('activityChart');
+            if (actCtx) {
+                if (activityChartInstance) activityChartInstance.destroy();
+                activityChartInstance = new Chart(actCtx, {
+                    type: 'line',
+                    data: {
+                        labels: actData.labels.length ? actData.labels : ['No data'],
+                        datasets: [{
+                            label: 'Threats',
+                            data: actData.data,
+                            borderColor: '#34d399',
+                            backgroundColor: 'rgba(52, 211, 153, 0.12)',
+                            borderWidth: 2.5, tension: 0.35, fill: true,
+                            pointRadius: 0, pointHoverRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#27272a' }, ticks: { color: '#52525b', font: { size: 10 } } },
+                            y: { grid: { color: '#27272a' }, ticks: { color: '#52525b', stepSize: 1, font: { size: 10 } } }
+                        }
+                    }
+                });
+            }
+
+            // Top Hosts bar chart (new)
+            const hostsRes = await fetch('/api/charts/hosts');
+            const hostsData = await hostsRes.json();
+
+            const hostsCtx = document.getElementById('hostsChart');
+            if (hostsCtx && hostsData.labels.length) {
+                new Chart(hostsCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: hostsData.labels,
+                        datasets: [{
+                            label: 'Threats',
+                            data: hostsData.data,
+                            backgroundColor: '#34d399',
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#27272a' }, ticks: { color: '#52525b', font: { size: 10 } } },
+                            y: { grid: { color: '#27272a' }, ticks: { color: '#52525b', stepSize: 1, font: { size: 10 } } }
+                        }
+                    }
+                });
+            }
+
+            // Dynamic Status breakdown
+            const statusRes = await fetch('/api/charts/status');
+            const statusData = await statusRes.json();
+
+            const statusCtx = document.getElementById('statusChart');
+            if (statusCtx) {
+                new Chart(statusCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: statusData.labels,
+                        datasets: [{
+                            data: statusData.data,
+                            backgroundColor: ['#fb923c', '#4ade80', '#71717a']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+        } catch (e) {
+            console.warn("Chart data load failed, using fallback visuals", e);
+        }
+    }
+
+    async function loadQuickStats() {
+        try {
+            const res = await fetch('/api/threats?limit=200');
+            const threats = await res.json();
+            
+            const open = threats.filter(t => (t.status || 'open') === 'open').length;
+            const high = threats.filter(t => ['high','critical'].includes((t.severity||'').toLowerCase())).length;
+            
+            const openEl = document.getElementById('open-threat-count');
+            const highEl = document.getElementById('high-sev-count');
+            if (openEl) openEl.textContent = open;
+            if (highEl) highEl.textContent = high;
+        } catch(e) {}
+    }
+
+    window.addEventListener('load', () => {
+        loadChartData();
+        loadQuickStats();
+        setInterval(() => { loadChartData(); loadQuickStats(); }, 30000);
+    });
+
+    function exportThreats(format) {
+        window.location = `/export/threats.${format}`;
+    }
+</script>
+{% endblock %}

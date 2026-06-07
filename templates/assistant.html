@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI Assistant{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-4xl font-semibold tracking-tighter">RocketLogAI Assistant</h1>
+        <p class="text-zinc-400 mt-2">Ask anything about the platform, <strong>or give natural English operator commands</strong> (e.g. "ping 1.1.1.1", "nmap the local network", "show devices using port 22", "run 'df -h' on the linux servers").</p>
+        <p class="text-[10px] text-emerald-400 mt-1">Phase 2 operator mode: every action shows a clear dry-run plan first and requires your explicit confirmation. All activity is audited.</p>
+    </div>
+
+    <!-- Chat / Ask Section (now supports rich operator plans) -->
+    <div class="section-card rounded-3xl p-6 mb-8">
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-2">Ask or give a command</label>
+            <div class="flex gap-2">
+                <input id="assistant-question" type="text" placeholder="ping the core router or 'run uname -a on my linux boxes'" 
+                       class="flex-1 bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm"
+                       onkeydown="if (event.key === 'Enter') askAssistant()">
+                <button onclick="askAssistant()" 
+                        class="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
+                    Send
+                </button>
+            </div>
+            <div class="text-[10px] text-zinc-500 mt-1">Operator commands always produce a reviewable plan. Read it, then click Confirm to run.</div>
+        </div>
+
+        <!-- Conversation / Results area -->
+        <div id="assistant-chat" class="min-h-[180px] max-h-[520px] overflow-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-4 text-sm mb-3"></div>
+
+        <!-- Current plan review card (populated when operator mode returns a plan) -->
+        <div id="operator-plan-card" class="hidden mt-4 p-5 border border-emerald-800 bg-emerald-950/10 rounded-2xl">
+            <div class="font-semibold mb-2 flex items-center gap-2">
+                <span>🛡️ Proposed Action Plan</span>
+                <span id="plan-risk" class="text-xs px-2 py-0.5 rounded bg-zinc-800"></span>
+            </div>
+            <div id="plan-explanation" class="text-sm mb-3 prose prose-invert prose-sm"></div>
+
+            <div class="text-xs uppercase tracking-wider text-emerald-400 mb-1">Steps that will be executed</div>
+            <div id="plan-steps" class="space-y-2 mb-4 text-sm"></div>
+
+            <div id="plan-meta" class="text-xs text-zinc-400 mb-4"></div>
+
+            <div class="flex gap-3">
+                <button onclick="confirmOperatorPlan(true)" 
+                        class="px-5 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold">
+                    Confirm &amp; Execute
+                </button>
+                <button onclick="dismissOperatorPlan()" 
+                        class="px-5 py-2 rounded-2xl border border-zinc-700 text-sm">
+                    Cancel / Edit command
+                </button>
+                <button onclick="confirmOperatorPlan(false)" 
+                        class="px-4 py-2 text-xs rounded-2xl border border-zinc-700">
+                    Dry-run only (no execution)
+                </button>
+            </div>
+            <div class="text-[10px] text-amber-400 mt-2">This action will be fully logged in Server Activity. Modifying actions create backups where possible and provide rollback guidance.</div>
+        </div>
+
+        <!-- Legacy simple answer box kept for compatibility -->
+        <div id="assistant-answer" class="hidden mt-4 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-sm whitespace-pre-wrap"></div>
+
+        <!-- Suggest Feature Section -->
+        <div id="suggest-section" class="hidden mt-6 pt-6 border-t border-zinc-800">
+            <div class="text-sm font-medium mb-2 text-purple-400">The assistant didn't fully answer your question?</div>
+            <textarea id="suggestion-text" rows="3" placeholder="Describe the missing feature or improvement you'd like..." 
+                      class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm"></textarea>
+            <div class="flex gap-2 mt-2">
+                <button onclick="submitSuggestion()" 
+                        class="px-5 py-2 rounded-2xl bg-purple-700 hover:bg-purple-600 text-white text-sm">
+                    Submit Suggestion (admins will review)
+                </button>
+                <button onclick="document.getElementById('suggest-section').classList.add('hidden')" 
+                        class="px-4 py-2 rounded-2xl border border-zinc-700 text-sm">
+                    Cancel
+                </button>
+            </div>
+            <div class="text-[10px] text-zinc-500 mt-1">Only admins can see and review suggestions.</div>
+        </div>
+    </div>
+
+    <!-- Admin Review Section -->
+    {% if is_admin %}
+    <div class="section-card rounded-3xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-xl font-semibold">Review Suggestions <span class="text-xs text-purple-400">(Admin only)</span></h2>
+            </div>
+            <button onclick="loadSuggestions()" 
+                    class="text-xs px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">
+                Refresh
+            </button>
+        </div>
+
+        <div id="suggestions-list" class="space-y-3 text-sm">
+            <div class="text-zinc-500 text-xs">Loading suggestions...</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+let currentOperatorPlan = null;
+
+function appendChatMessage(role, content, extraClass = '') {
+    const chat = document.getElementById('assistant-chat');
+    const div = document.createElement('div');
+    div.className = `p-3 rounded-2xl ${role === 'user' ? 'bg-zinc-900 ml-8' : 'bg-emerald-950/30 mr-8'} ${extraClass}`;
+    div.innerHTML = `<div class="text-[10px] ${role === 'user' ? 'text-zinc-500' : 'text-emerald-400'} mb-0.5">${role === 'user' ? 'You' : 'Assistant'}</div><div>${content}</div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+}
+
+async function askAssistant() {
+    const input = document.getElementById('assistant-question');
+    const q = input.value.trim();
+    if (!q) return;
+
+    const chat = document.getElementById('assistant-chat');
+    appendChatMessage('user', q);
+    input.value = '';
+
+    const thinking = appendChatMessage('assistant', 'Thinking...');
+
+    try {
+        const res = await fetch('/api/assistant/ask', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ question: q })
+        });
+        const data = await res.json();
+
+        thinking.remove();
+
+        if (data.mode === 'operator_plan' && data.plan && data.plan.is_operator_command) {
+            // Rich operator plan path (Phase 2)
+            currentOperatorPlan = data.plan;
+            appendChatMessage('assistant', data.answer || 'Here is a proposed plan for your review.');
+
+            // Show the beautiful review card
+            renderOperatorPlanCard(data.plan);
+        } else {
+            // Normal help answer
+            appendChatMessage('assistant', data.answer || 'No response.');
+            document.getElementById('suggest-section').classList.remove('hidden');
+            const sug = document.getElementById('suggestion-text');
+            if (sug) sug.value = `Question the assistant couldn't answer well: "${q}"\n\nSuggested improvement:`;
+        }
+    } catch (e) {
+        thinking.remove();
+        appendChatMessage('assistant', 'Error contacting assistant. You can still submit a suggestion below.');
+        document.getElementById('suggest-section').classList.remove('hidden');
+    }
+}
+
+function renderOperatorPlanCard(plan) {
+    const card = document.getElementById('operator-plan-card');
+    if (!card) return;
+    card.classList.remove('hidden');
+
+    // Explanation
+    document.getElementById('plan-explanation').innerHTML = (plan.explanation || '').replace(/\n/g, '<br>');
+
+    // Risk badge
+    const riskEl = document.getElementById('plan-risk');
+    const risk = (plan.proposed_steps || []).some(s => (s.risk || '').toLowerCase() === 'high') ? 'high' :
+                 (plan.proposed_steps || []).some(s => (s.risk || '').toLowerCase() === 'medium') ? 'medium' : 'low';
+    riskEl.textContent = risk.toUpperCase();
+    riskEl.className = `text-xs px-2 py-0.5 rounded ${risk === 'high' ? 'bg-red-900 text-red-300' : risk === 'medium' ? 'bg-amber-900 text-amber-300' : 'bg-emerald-900 text-emerald-300'}`;
+
+    // Steps
+    const stepsEl = document.getElementById('plan-steps');
+    stepsEl.innerHTML = '';
+    (plan.proposed_steps || []).forEach((s, i) => {
+        const div = document.createElement('div');
+        div.className = 'bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs';
+        div.innerHTML = `
+            <div class="font-mono text-emerald-400">${i+1}. ${s.description || ''}</div>
+            <div class="font-mono mt-1 text-zinc-300">${s.command || ''}</div>
+            <div class="text-[10px] text-zinc-500 mt-1">OS: ${s.os || 'any'} • Risk: ${s.risk || 'low'}</div>
+        `;
+        stepsEl.appendChild(div);
+    });
+
+    // Meta
+    const meta = document.getElementById('plan-meta');
+    const targets = (plan.targets || []).map(t => `${t.name || t.ip} (${t.os_guess || 'unknown'})`).join(', ') || '—';
+    const cred = (plan.targets || []).map(t => t.cred_profile).filter(Boolean)[0] || 'none selected';
+    meta.innerHTML = `Targets: <span class="text-emerald-300">${targets}</span> &nbsp;•&nbsp; Credential: <span class="text-emerald-300">${cred}</span>`;
+
+    // Store the exact plan the user saw for the confirm call
+    card.dataset.planJson = JSON.stringify(plan);
+}
+
+function dismissOperatorPlan() {
+    const card = document.getElementById('operator-plan-card');
+    if (card) card.classList.add('hidden');
+    currentOperatorPlan = null;
+}
+
+async function confirmOperatorPlan(execute = true) {
+    const card = document.getElementById('operator-plan-card');
+    if (!card || !currentOperatorPlan) return;
+
+    const plan = currentOperatorPlan;
+
+    card.innerHTML = `<div class="text-sm">Sending to execution engine... (this is logged)</div>`;
+
+    try {
+        const res = await fetch('/api/assistant/confirm_execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ plan: plan, confirmed: execute })
+        });
+        const data = await res.json();
+
+        const chat = document.getElementById('assistant-chat');
+        if (data.success) {
+            appendChatMessage('assistant', `<strong>Execution ${execute ? 'completed' : 'dry-run finished'}.</strong><br><pre class="text-xs whitespace-pre-wrap bg-black/40 p-2 rounded mt-2">${JSON.stringify(data.results || data, null, 2)}</pre><div class="text-emerald-400 mt-1">${data.rollback_hint || ''}</div>`);
+        } else if (data.needs_confirm) {
+            appendChatMessage('assistant', 'Confirmation required. Click the Confirm button again if you are sure.');
+        } else {
+            appendChatMessage('assistant', `Action blocked or failed: ${data.error || 'unknown'}`);
+        }
+    } catch (e) {
+        appendChatMessage('assistant', 'Network error during confirmation/execution.');
+    } finally {
+        card.classList.add('hidden');
+        currentOperatorPlan = null;
+    }
+}
+
+async function submitSuggestion() {
+    const question = document.getElementById('assistant-question').value.trim();
+    const suggestion = document.getElementById('suggestion-text').value.trim();
+
+    if (!suggestion) {
+        alert("Please enter a suggestion.");
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/assistant/suggest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ question, suggestion })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            alert(data.message || "Suggestion submitted. Thank you!");
+            document.getElementById('suggest-section').classList.add('hidden');
+            document.getElementById('suggestion-text').value = '';
+        } else {
+            alert("Failed to submit: " + (data.error || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Error submitting suggestion.");
+    }
+}
+
+async function loadSuggestions() {
+    const container = document.getElementById('suggestions-list');
+    container.innerHTML = '<div class="text-zinc-500 text-xs">Loading...</div>';
+
+    try {
+        const res = await fetch('/api/assistant/suggestions');
+        const data = await res.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="text-red-400 text-sm">${data.error}</div>`;
+            return;
+        }
+
+        if (!data.suggestions || data.suggestions.length === 0) {
+            container.innerHTML = '<div class="text-zinc-500 text-sm">No suggestions yet.</div>';
+            return;
+        }
+
+        let html = '';
+        data.suggestions.forEach(s => {
+            html += `
+                <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
+                    <div class="flex justify-between text-xs text-zinc-400 mb-2">
+                        <div><strong>${s.username}</strong> • ${s.created_at ? s.created_at.substring(0,16) : ''}</div>
+                        <div class="font-mono">${s.status}</div>
+                    </div>
+                    <div class="text-sm mb-1"><strong>Q:</strong> ${s.question || ''}</div>
+                    ${s.suggestion ? `<div class="text-sm mb-2"><strong>Suggestion:</strong> ${s.suggestion}</div>` : ''}
+                    ${s.ai_answer ? `<div class="text-xs text-zinc-400 mb-2">AI answered: ${s.ai_answer.substring(0,200)}...</div>` : ''}
+                    
+                    <div class="flex gap-2 mt-3">
+                        <select onchange="reviewSuggestion(${s.id}, this.value)" class="text-xs bg-zinc-900 border border-zinc-700 rounded px-2 py-1">
+                            <option value="">Change status...</option>
+                            <option value="reviewed">Reviewed</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="implemented">Implemented</option>
+                        </select>
+                        <input type="text" placeholder="Notes (optional)" id="notes-${s.id}" 
+                               class="text-xs bg-zinc-900 border border-zinc-700 rounded px-2 flex-1">
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<div class="text-red-400">Failed to load suggestions.</div>';
+    }
+}
+
+async function reviewSuggestion(id, newStatus) {
+    if (!newStatus) return;
+
+    const notesInput = document.getElementById(`notes-${id}`);
+    const notes = notesInput ? notesInput.value.trim() : null;
+
+    try {
+        const res = await fetch(`/api/assistant/suggestions/${id}/review`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ status: newStatus, notes })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            loadSuggestions();
+        } else {
+            alert("Review failed: " + (data.error || "Unknown"));
+        }
+    } catch (e) {
+        alert("Error submitting review.");
+    }
+}
+
+// Auto-load suggestions for admins + seed a couple of example operator commands in placeholder
+document.addEventListener('DOMContentLoaded', () => {
+    const suggestionsContainer = document.getElementById('suggestions-list');
+    if (suggestionsContainer) {
+        loadSuggestions();
+    }
+});
+</script>
+{% endblock %}

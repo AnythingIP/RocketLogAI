@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+{% block title %}RocketLogAI • Threat Map{% endblock %}
+
+{% block content %}
+<div class="flex items-end justify-between mb-6">
+    <div>
+        <h1 class="font-display text-4xl tracking-tighter font-semibold">Threat Map</h1>
+        <p class="text-zinc-400 mt-1">Where the world has been talking to (from threats with geo data)</p>
+    </div>
+    <div class="flex items-center gap-3">
+        <div id="geo-status-pill" class="text-xs px-2 py-1 rounded-full border border-zinc-700 bg-zinc-900 text-zinc-400">
+            Geo status...
+        </div>
+        <div id="geo-providers" class="text-[10px] text-zinc-500"></div>
+        <button onclick="forceGeoReloadAndBackfill()" 
+                class="px-3 py-1.5 text-xs rounded-xl bg-amber-900 hover:bg-amber-800 text-amber-200 border border-amber-700">
+            Re-enrich missing locations
+        </button>
+        <button onclick="enrichMissingPublicIPs()" 
+                class="px-3 py-1.5 text-xs rounded-xl bg-sky-900 hover:bg-sky-800 text-sky-200 border border-sky-700"
+                title="Use online lookup for public external IPs not in local GeoLite2">
+            Enrich missing public IPs (online)
+        </button>
+        <a href="/" class="px-4 py-2 text-sm rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700">← Dashboard</a>
+    </div>
+</div>
+
+<div class="mb-4 p-4 bg-zinc-950 border border-zinc-800 rounded-2xl">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+
+        <!-- View Mode - simplified to exactly two buttons per user request -->
+        <div>
+            <div class="text-xs font-medium text-zinc-400 mb-1.5">View Mode</div>
+            <div class="inline-flex rounded-xl overflow-hidden border border-zinc-700 text-xs">
+                <button onclick="setMapFilter('threats')" id="btn-threats"
+                        class="px-3 py-1.5 bg-emerald-800 text-white">Threats</button>
+                <button onclick="setMapFilter('external')" id="btn-external"
+                        class="px-3 py-1.5 bg-teal-700 hover:bg-teal-600 text-white">All External IPs</button>
+            </div>
+            <div class="text-[10px] text-zinc-500 mt-0.5">External = cached + outbound destinations (union)</div>
+        </div>
+
+        <!-- Severity -->
+        <div>
+            <div class="text-xs font-medium text-zinc-400 mb-1.5">Minimum Severity</div>
+            <div class="flex gap-1 text-xs">
+                <button onclick="setMinSeverity('all')" id="sev-all"
+                        class="px-2.5 py-1 rounded-lg border border-emerald-700 bg-emerald-900 text-white">All</button>
+                <button onclick="setMinSeverity('medium')" id="sev-medium"
+                        class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">Medium+</button>
+                <button onclick="setMinSeverity('high')" id="sev-high"
+                        class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">High+</button>
+            </div>
+        </div>
+
+        <!-- Time Range -->
+        <div>
+            <div class="text-xs font-medium text-zinc-400 mb-1.5">Time Range</div>
+            <div class="flex gap-1 text-xs">
+                <button onclick="setTimeRange(1)" id="time-1d"
+                        class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">24h</button>
+                <button onclick="setTimeRange(7)" id="time-7d"
+                        class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">7d</button>
+                <button onclick="setTimeRange(30)" id="time-30d"
+                        class="px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700">30d</button>
+                <button onclick="setTimeRange(0)" id="time-all"
+                        class="px-2.5 py-1 rounded-lg border border-emerald-700 bg-emerald-900 text-white">All time</button>
+            </div>
+        </div>
+
+        <!-- Quick Legend / Toggles -->
+        <div>
+            <div class="text-xs font-medium text-zinc-400 mb-1.5">Layers</div>
+            <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="layer-threats" checked onchange="applyFilters()" class="accent-red-500">
+                    <span class="text-red-400">● Threats</span>
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="layer-external" checked onchange="applyFilters()" class="accent-blue-500">
+                    <span class="text-blue-400">● Other External</span>
+                </label>
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="layer-blacklist" checked onchange="applyFilters()" class="accent-orange-500">
+                    <span class="text-orange-400">Blacklisted</span>
+                </label>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="section-card rounded-3xl p-2 mb-4">
+    <div id="map" style="height: 620px; width: 100%; border-radius: 1rem; background: #111113;"></div>
+</div>
+
+<div class="text-xs text-zinc-500 mt-2 flex items-center gap-4">
+    <span><span style="color:#ef4444">●</span> Threats</span>
+    <span><span style="color:#3b82f6">●</span> All External IPs (cached + outbound)</span>
+    <span class="ml-auto">External view now unions cached + outbound. Light auto-warm runs when few dots appear.</span>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+let map;
+let currentMapFilter = 'threats';   // 'threats' | 'external'  (only two modes now)
+let currentMinSeverity = 'all';     // all | medium | high
+let currentTimeRangeDays = 0;       // 0 = all time, 1, 7, 30
+
+let allThreatsData = [];            // cache of loaded threats
+let allExternalData = [];           // cache of loaded external IPs from geo cache
+
+function initMap() {
+    const mapEl = document.getElementById('map');
+    if (!mapEl) return;
+
+    map = L.map('map').setView([20, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Give the layout one more frame to settle (Tailwind + rounded cards)
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 80);
+}
+
+// Initialize after the Leaflet script has loaded and DOM is ready
+function startMap() {
+    initMap();
+    // Start loading data shortly after the map object exists
+    setTimeout(() => loadThreatMap(currentMapFilter), 120);
+
+    // Initialize filter button states
+    setTimeout(updateActiveButtons, 300);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startMap);
+} else {
+    startMap();
+}
+
+// After the map has had a moment to load data, populate the pill
+setTimeout(() => {
+    if (typeof updateGeoStatusPill === 'function') updateGeoStatusPill();
+}, 800);
+
+async function loadThreatMap(mode = null) {
+    if (mode) currentMapFilter = mode;
+
+    if (window._mapMarkers) {
+        window._mapMarkers.forEach(m => m.remove());
+    }
+    window._mapMarkers = [];
+
+    try {
+        // Cache data
+        if (allThreatsData.length === 0) {
+            const res = await fetch('/api/threats?limit=1000&enrich_geo=1');
+            const data = await res.json();
+            allThreatsData = Array.isArray(data) ? data : (data.threats || []);
+        }
+        if (allExternalData.length === 0) {
+            const c = await fetch('/api/geo/cached-ips?limit=500');
+            const cd = await c.json();
+            allExternalData = (cd.success && cd.ips) ? cd.ips : [];
+        }
+
+        const showThreat = document.getElementById('layer-threats')?.checked ?? true;
+        const showExt = document.getElementById('layer-external')?.checked ?? true;
+
+        let rendered = 0;
+
+        // Threats (red) - only in 'threats' mode
+        if (currentMapFilter === 'threats' && showThreat) {
+            let threats = allThreatsData.filter(t => t.geo_lat != null && t.geo_lon != null);
+
+            // Time filter
+            if (currentTimeRangeDays > 0) {
+                const cutoff = new Date(Date.now() - currentTimeRangeDays * 86400000).toISOString();
+                threats = threats.filter(t => (t.created_at || '') >= cutoff);
+            }
+
+            // Severity filter
+            if (currentMinSeverity === 'medium') {
+                threats = threats.filter(t => ['medium','high','critical'].includes((t.severity || '').toLowerCase()));
+            } else if (currentMinSeverity === 'high') {
+                threats = threats.filter(t => ['high','critical'].includes((t.severity || '').toLowerCase()));
+            }
+
+            threats.forEach(t => {
+                const marker = L.marker([t.geo_lat, t.geo_lon], {
+                    icon: L.divIcon({
+                        html: `<div style="background:#ef4444;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 0 4px rgba(239,68,68,0.6);"></div>`,
+                        iconSize: [14,14], iconAnchor: [7,7]
+                    })
+                }).addTo(map);
+                window._mapMarkers.push(marker);
+
+                const link = t.source_ip ? `<br><a href="/devices/${t.source_ip}" style="color:#60a5fa;font-size:11px;">View Device →</a>` : '';
+                const sourceInfo = t.geo_source ? `<br><small style="color:#888">via ${t.geo_source}</small>` : '';
+                const geoLabel = (t.geo_city || t.geo_country) ? `${t.geo_city || ''}${t.geo_country ? ', ' + t.geo_country : ''}` : 'Local / Private IP (internal address only)';
+                marker.bindPopup(`
+                    <b style="color:#ef4444">${t.severity?.toUpperCase() || 'THREAT'}</b><br>
+                    ${t.description || ''}<br>
+                    <small>${t.hostname || ''} • ${geoLabel}</small>
+                    ${sourceInfo}
+                    ${link}
+                `);
+                rendered++;
+            });
+        }
+
+        // ALL EXTERNAL IPs (blue) - union of cached (with geo) + outbound-destinations (live enriched)
+        // This is the key fix for "not showing other external ips"
+        if (currentMapFilter === 'external' && showExt) {
+            const seenIps = new Set();
+            let externals = [];
+
+            // 1. From general geo cache (threat sources etc that got enriched)
+            for (const e of allExternalData) {
+                const lat = e.lat ?? e.geo_lat;
+                const lon = e.lon ?? e.geo_lon;
+                if (lat == null || lon == null) continue;
+                const ip = e.ip;
+                if (ip && seenIps.has(ip)) continue;
+                if (ip) seenIps.add(ip);
+                externals.push({ip, lat, lon, city: e.city || e.geo_city, country: e.country || e.geo_country, source: 'cache'});
+            }
+
+            // 2. Outbound destinations (baselines + live geo enrichment in the API)
+            try {
+                const res = await fetch('/api/geo/outbound-destinations?limit=400');
+                const data = await res.json();
+                if (data.success && data.destinations) {
+                    for (const dest of data.destinations) {
+                        if (!dest.lat || !dest.lon) continue;
+                        const ip = dest.ip;
+                        if (ip && seenIps.has(ip)) continue;
+                        if (ip) seenIps.add(ip);
+                        externals.push({ip, lat: dest.lat, lon: dest.lon, city: dest.city, country: dest.country, source: 'outbound'});
+                    }
+                }
+            } catch (e) {
+                console.warn("Outbound fetch failed in external mode", e);
+            }
+
+            // Time filter on the merged set
+            if (currentTimeRangeDays > 0) {
+                const cutoff = new Date(Date.now() - currentTimeRangeDays * 86400000).toISOString();
+                externals = externals.filter(e => (e.fetched_at || '') >= cutoff);
+            }
+
+            externals.forEach(e => {
+                const marker = L.marker([e.lat, e.lon], {
+                    icon: L.divIcon({
+                        html: `<div style="background:#3b82f6;width:9px;height:9px;border-radius:50%;border:1px solid white;opacity:0.75;"></div>`,
+                        iconSize: [9,9], iconAnchor: [4.5,4.5]
+                    })
+                }).addTo(map);
+                window._mapMarkers.push(marker);
+
+                const link = e.ip ? `<br><a href="/devices/${e.ip}" style="color:#60a5fa;font-size:11px;">View Device →</a>` : '';
+                const sourceInfo = e.geo_source ? `<br><small style="color:#888">via ${e.geo_source}</small>` : '';
+                const geoLabel2 = (e.city || e.country) ? `${e.city || ''}${e.country ? ', ' + e.country : ''}` : 'Local / Private IP (internal address only)';
+                marker.bindPopup(`
+                    <b style="color:#3b82f6">External IP</b><br>
+                    ${e.ip}<br>
+                    <small>${geoLabel2}</small>
+                    ${sourceInfo}
+                    ${link}
+                `);
+                rendered++;
+            });
+
+            // LIGHT AUTO-WARM: if very few external dots, silently warm a few more (helps after overnight runs)
+            if (rendered < 5) {
+                setTimeout(async () => {
+                    try {
+                        const r = await fetch('/api/geo/warm-external-light', {method: 'POST'});
+                        const j = await r.json();
+                        if (j.enriched > 0) {
+                            // refresh caches and reload markers for external
+                            allExternalData = [];
+                            await loadThreatMap('external');
+                            const note = document.createElement('div');
+                            note.className = 'text-[10px] text-sky-400 mt-1';
+                            note.textContent = `Auto-enriched ${j.enriched} more locations`;
+                            const mapEl = document.getElementById('map');
+                            if (mapEl && mapEl.parentNode) mapEl.parentNode.appendChild(note);
+                            setTimeout(() => note.remove(), 4000);
+                        }
+                    } catch (_) {}
+                }, 400);
+            }
+        }
+
+        if (window._mapMarkers.length > 0) {
+            const bounds = window._mapMarkers.map(m => m.getLatLng());
+            map.fitBounds(bounds, {padding: [25,25]});
+        } else {
+            map.setView([20, 0], 2);
+        }
+
+        setTimeout(() => { if (map) map.invalidateSize(); }, 80);
+        updateActiveButtons();
+
+    } catch (e) {
+        console.error(e);
+        document.getElementById('map').innerHTML = '<div class="p-8 text-center text-zinc-500">Map load failed.</div>';
+    }
+}
+
+// === New advanced filtering functions ===
+
+function setMapFilter(mode) {
+    currentMapFilter = mode;
+
+    // Sync layer checkboxes
+    const threatBox = document.getElementById('layer-threats');
+    const extBox = document.getElementById('layer-external');
+
+    if (mode === 'threats') {
+        if (threatBox) threatBox.checked = true;
+        if (extBox) extBox.checked = false;
+    } else if (mode === 'external') {
+        if (threatBox) threatBox.checked = false;
+        if (extBox) extBox.checked = true;
+    }
+
+    // Clean active state on the TWO buttons only
+    ['btn-threats', 'btn-external'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('bg-emerald-800', 'text-white', '!bg-emerald-700', '!border-emerald-600');
+            el.classList.add('bg-zinc-800', 'hover:bg-zinc-700');
+        }
+    });
+
+    const activeId = mode === 'threats' ? 'btn-threats' : 'btn-external';
+    const activeEl = document.getElementById(activeId);
+    if (activeEl) {
+        activeEl.classList.remove('bg-zinc-800', 'hover:bg-zinc-700');
+        activeEl.classList.add('bg-emerald-800', 'text-white');
+    }
+
+    loadThreatMap(mode);
+}
+
+function setMinSeverity(level) {
+    currentMinSeverity = level;
+    loadThreatMap(currentMapFilter);
+}
+
+function setTimeRange(days) {
+    currentTimeRangeDays = days;
+    loadThreatMap(currentMapFilter);
+}
+
+function applyFilters() {
+    loadThreatMap(currentMapFilter);
+}
+
+async function updateGeoStatusPill() {
+    try {
+        const res = await fetch('/api/geo/status?refresh=0');
+        const s = await res.json();
+        const el = document.getElementById('geo-status-pill');
+        const providersEl = document.getElementById('geo-providers');
+
+        if (s.available) {
+            el.className = 'text-xs px-2 py-1 rounded-full border border-emerald-800 bg-emerald-950 text-emerald-300';
+            el.innerHTML = `Geo ready — ${s.cached_ips || 0} cached`;
+        } else {
+            el.className = 'text-xs px-2 py-1 rounded-full border border-red-800 bg-red-950 text-red-300';
+            el.innerHTML = 'Geo limited';
+        }
+
+        // Show active providers when using multi-source
+        if (providersEl && s.providers && s.providers.length > 0) {
+            const active = s.providers.filter(p => p.available).map(p => p.type);
+            const names = active.length > 0 ? active.join(' + ') : 'No active providers';
+            providersEl.textContent = names;
+            providersEl.title = s.providers.map(p => `${p.type}: ${p.available ? 'OK' : 'down'}`).join(', ');
+        } else if (providersEl) {
+            providersEl.textContent = '';
+        }
+    } catch(e) {
+        const el = document.getElementById('geo-status-pill');
+        el.textContent = 'Geo status unknown';
+    }
+}
+
+async function forceGeoReloadAndBackfill() {
+    const btns = document.querySelectorAll('button');
+    const originalTexts = [];
+    btns.forEach((b, i) => { originalTexts[i] = b.textContent; b.disabled = true; });
+
+    try {
+        // 1. Force the backend singleton to re-scan (critical for /Volumes/logsentinel after placing the file)
+        await fetch('/api/geo/reload', { method: 'POST' });
+
+        // 2. Backfill all historical threats that now can be located
+        const back = await fetch('/api/geo/backfill', { method: 'POST' });
+        const backData = await back.json();
+
+        // 3. Refresh the map (the /api/threats call will also do live enrichment)
+        if (map) {
+            // remove all current markers
+            if (window._mapMarkers) window._mapMarkers.forEach(m => m.remove());
+            window._mapMarkers = [];
+        }
+        await loadThreatMap(currentMapFilter);
+
+        alert(`Geo reload complete. Backfilled ${backData.updated || 0} threats with location data.`);
+    } catch (e) {
+        alert('Geo reload / backfill failed: ' + e);
+    } finally {
+        btns.forEach((b, i) => { b.disabled = false; });
+        updateGeoStatusPill();
+    }
+}
+
+async function enrichMissingPublicIPs() {
+    if (!confirm("This will use online lookup (ip-api.com) for public external IPs missing geo data.\n\nPrivate IPs are automatically skipped. May take 10-60 seconds depending on how many are missing.")) {
+        return;
+    }
+
+    const btns = document.querySelectorAll('button');
+    btns.forEach(b => b.disabled = true);
+
+    try {
+        const res = await fetch('/api/geo/enrich-missing', { method: 'POST' });
+        const data = await res.json();
+
+        const msg = data.message || `Enriched ${data.enriched || 0} IPs`;
+        alert(msg);
+
+        // Refresh everything
+        if (map) {
+            if (window._mapMarkers) window._mapMarkers.forEach(m => m.remove());
+            window._mapMarkers = [];
+        }
+        // Clear caches so we pick up newly enriched IPs
+        allThreatsData = [];
+        allExternalData = [];
+
+        await loadThreatMap(currentMapFilter);
+        updateGeoStatusPill();
+
+    } catch (e) {
+        alert("Enrichment failed: " + e);
+    } finally {
+        btns.forEach(b => b.disabled = false);
+    }
+}
+
+function updateActiveButtons() {
+    // View mode - only the two real buttons
+    ['btn-threats', 'btn-external'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('!bg-emerald-700', '!border-emerald-600');
+    });
+    const m = document.getElementById(`btn-${currentMapFilter}`);
+    if (m) m.classList.add('!bg-emerald-700', '!border-emerald-600');
+
+    // Severity
+    ['sev-all','sev-medium','sev-high'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('!bg-emerald-700','!border-emerald-600');
+    });
+    const sId = currentMinSeverity === 'all' ? 'sev-all' : `sev-${currentMinSeverity}`;
+    const s = document.getElementById(sId);
+    if (s) s.classList.add('!bg-emerald-700','!border-emerald-600');
+
+    // Time
+    ['time-1d','time-7d','time-30d','time-all'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('!bg-emerald-700','!border-emerald-600');
+    });
+    let tId = 'time-all';
+    if (currentTimeRangeDays === 1) tId = 'time-1d';
+    else if (currentTimeRangeDays === 7) tId = 'time-7d';
+    else if (currentTimeRangeDays === 30) tId = 'time-30d';
+    const t = document.getElementById(tId);
+    if (t) t.classList.add('!bg-emerald-700','!border-emerald-600');
+}
+
+// Initial state is set in startMap + loadThreatMap; removed the conflicting DOMContentLoaded reset that was fighting the buttons
+
+</script>
+{% endblock %}
