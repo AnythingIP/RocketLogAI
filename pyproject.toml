@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "logsentinel"
-version = "1.4.0-phase4"
+version = "1.4.0"
 description = "AI-powered syslog server and security analyzer using local LLMs (LM Studio compatible)"
 readme = { text = "RocketLogAI - AI-powered syslog security analyzer", content-type = "text/markdown" }
 license = {text = "MIT"}
