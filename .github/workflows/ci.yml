@@ -10,13 +10,14 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -32,10 +33,23 @@ jobs:
           ruff check logsentinel/brain logsentinel/mcp logsentinel/remediate logsentinel/shield \
             logsentinel/mobile logsentinel/ueba logsentinel/audit logsentinel/agents \
             logsentinel/observability logsentinel/plugins logsentinel/integrations \
-            logsentinel/v2_runtime.py logsentinel/v2_api.py --ignore E501
+            logsentinel/v2_runtime.py logsentinel/v2_api.py
 
       - name: Compile check
-        run: python -m py_compile logsentinel/*.py logsentinel/**/*.py
+        run: |
+          python -c "
+          import pathlib, py_compile, sys
+          errors = []
+          for p in sorted(pathlib.Path('logsentinel').rglob('*.py')):
+              try:
+                  py_compile.compile(str(p), doraise=True)
+              except py_compile.PyCompileError as e:
+                  errors.append(str(e))
+          if errors:
+              print('\n'.join(errors))
+              sys.exit(1)
+          print(f'Compiled {len(list(pathlib.Path(\"logsentinel\").rglob(\"*.py\")))} files OK')
+          "
 
       - name: Run tests
         run: pytest tests/ -v --tb=short

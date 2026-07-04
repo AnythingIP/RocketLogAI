@@ -51,7 +51,7 @@ class MetricsRegistry:
             if vals:
                 lines.append(f"{key}_sum {sum(vals)}")
                 lines.append(f"{key}_count {len(vals)}")
-        lines.append(f"rocketlogai_up 1")
+        lines.append("rocketlogai_up 1")
         lines.append(f"rocketlogai_scrape_ts {time.time()}")
         return "\n".join(lines) + "\n"
 
