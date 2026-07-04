@@ -11,10 +11,11 @@
             </h1>
             <p class="text-zinc-400 mt-1">One stop, actually interesting recap of what the server had to deal with. Talk to the crew like a sharp coworker who was up all night with the machines.</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
             <a href="/" class="px-4 py-2 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">← Dashboard</a>
-            <button onclick="loadPastBriefings()" 
-                    class="px-4 py-2 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Past Shifts</button>
+            <button onclick="newReport()" class="px-4 py-2 text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium">+ New Report</button>
+            <button onclick="loadPastBriefings()" class="px-4 py-2 text-sm rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">History</button>
+            <input id="calendar-picker" type="date" class="bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm" onchange="generateForDate(this.value)">
         </div>
     </div>
 
@@ -471,15 +472,44 @@ async function exportCurrentBriefing() {
     }
 }
 
-async function initDaily() {
-    // Auto-load a default rolling 24h briefing on first visit (fast path)
-    // You can comment this out if you prefer the page to start empty.
-    setTimeout(() => {
-        // Only auto if nothing loaded yet
-        if (!document.getElementById('briefing-card').classList.contains('hidden')) return;
-        generateBriefing({ window: 'rolling_24h' });
-    }, 350);
+function newReport() {
+    currentBriefingId = null;
+    document.getElementById('briefing-card').classList.add('hidden');
+    document.getElementById('chat-history').innerHTML = '<div class="text-zinc-500 text-xs">Choose a window above and click a quick button or "Ask the Crew" to generate a new report. Nothing auto-loads — you pick when to run.</div>';
+    document.getElementById('past-briefings').classList.add('hidden');
 }
+
+function generateForDate(dateStr) {
+    if (!dateStr) return;
+    generateBriefing({ window: 'calendar_day', day: dateStr });
+}
+
+async function loadLastBriefing() {
+    try {
+        const res = await fetch('/api/daily/briefings');
+        const data = await res.json();
+        if (data.briefings && data.briefings.length) {
+            await loadExistingBriefing(data.briefings[0].id);
+        }
+    } catch (e) {}
+}
+
+async function initDaily() {
+    // No auto-load — restore last saved briefing from history if user had one
+    try {
+        const pref = localStorage.getItem('daily_last_briefing_id');
+        if (pref) {
+            await loadExistingBriefing(parseInt(pref, 10));
+        }
+    } catch (e) {}
+}
+
+// Save last briefing ID for persistence across sessions
+const _origRender = renderBriefing;
+renderBriefing = function(data) {
+    _origRender(data);
+    if (currentBriefingId) localStorage.setItem('daily_last_briefing_id', currentBriefingId);
+};
 
 document.addEventListener('DOMContentLoaded', initDaily);
 </script>

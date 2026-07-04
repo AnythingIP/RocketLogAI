@@ -1,0 +1,47 @@
+replicaCount: 1
+
+image:
+  repository: rocketlogai
+  tag: "2.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  webPort: 8787
+  syslogPort: 5140
+
+ingress:
+  enabled: false
+  className: ""
+  hosts:
+    - host: rocketlogai.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: ""
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+config:
+  llm:
+    base_url: "http://ollama:11434/v1"
+    provider: local
+
+monitoring:
+  prometheus:
+    enabled: true
+    path: /api/v2/metrics
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000

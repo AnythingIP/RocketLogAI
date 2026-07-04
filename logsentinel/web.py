@@ -135,7 +135,7 @@ logging.getLogger().addHandler(live_log_buffer)
 logging.getLogger().setLevel(logging.INFO)
 
 
-app = FastAPI(title="RocketLogAI", docs_url=None, redoc_url=None)
+app = FastAPI(title="RocketLogAI", version="2.0.0", docs_url=None, redoc_url=None)
 
 # Session middleware for proper login page (cookie-based)
 # The secret is generated once and persisted in data/session_secret.txt so sessions survive restarts.
@@ -853,6 +853,127 @@ async def save_config(request: Request, user: str = Depends(require_login), role
         return RedirectResponse(f"/config?error={safe_err}", status_code=302)
 
 
+@app.post("/api/config/save/{section}")
+async def save_config_section(
+    section: str,
+    request: Request,
+    user: str = Depends(require_login),
+    role: str = Depends(require_min_role("administrator")),
+):
+    """Per-section config save — loads running config, updates only the requested section."""
+    global _cfg
+    if _cfg is None:
+        return {"error": "no config"}
+
+    body = await request.json()
+    import yaml
+
+    config_path = _cfg.config_path or "config.yaml"
+    existing: dict = {}
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as f:
+            existing = yaml.safe_load(f) or {}
+
+    allowed_sections = {
+        "llm", "web", "syslog", "storage", "analysis", "rules", "alerting",
+        "remediation", "geo", "blacklist", "home_assistant", "heartbeats",
+        "branding", "data_sources", "brain", "shield", "mobile", "syslog_forwarding", "tenant",
+    }
+    if section not in allowed_sections:
+        return {"error": f"unknown section: {section}"}
+
+    existing[section] = {**(existing.get(section) or {}), **body}
+    tmp = config_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.safe_dump(existing, f, sort_keys=False, default_flow_style=False)
+    os.replace(tmp, config_path)
+    _cfg = Config.load(config_path)
+
+    if _storage and hasattr(_storage, "set_user_preference"):
+        _storage.set_user_preference(user, f"config_section_{section}", json.dumps(body))
+
+    return {"success": True, "section": section, "message": "Section saved. Some changes may require restart."}
+
+
+@app.get("/api/config/running")
+async def get_running_config(user: str = Depends(require_login), role: str = Depends(require_min_role("administrator"))):
+    """Return the currently running config (no defaults reset)."""
+    if _cfg is None:
+        return {"error": "no config"}
+    return _cfg.to_dict()
+
+
+@app.get("/callback/entra")
+async def entra_oauth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Entra ID OAuth redirect callback."""
+    if error:
+        return RedirectResponse(f"/login?error={urlquote(error)}", status_code=302)
+    if not code or _cfg is None:
+        return RedirectResponse("/login?error=missing_code", status_code=302)
+
+    try:
+        import requests
+        from .auth import decrypt_secret
+
+        tenant = _cfg.web.entra_tenant_id
+        client_id = _cfg.web.entra_client_id
+        client_secret = decrypt_secret(_cfg.web.entra_client_secret or "")
+        redirect_uri = _cfg.web.entra_redirect_uri or str(request.url_for("entra_oauth_callback"))
+
+        token_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+        data = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+            "scope": _cfg.web.entra_scopes,
+        }
+        r = requests.post(token_url, data=data, timeout=15)
+        r.raise_for_status()
+        tokens = r.json()
+        access_token = tokens.get("access_token", "")
+
+        from .auth import try_entra_login
+        success, role, groups = try_entra_login(access_token, "", _cfg.web, _storage, is_token=True)
+        if success:
+            request.session["user"] = groups[0] if groups else "entra_user"
+            request.session["role"] = role or "viewer"
+            request.session["auth_type"] = "entra"
+            return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/login?error=entra_auth_failed", status_code=302)
+    except Exception as exc:
+        logger.exception("Entra callback failed")
+        return RedirectResponse(f"/login?error={urlquote(str(exc)[:100])}", status_code=302)
+
+
+@app.get("/auth/entra")
+async def entra_oauth_start(request: Request):
+    """Start Entra ID OAuth flow."""
+    if _cfg is None or not _cfg.web.entra_enabled:
+        return RedirectResponse("/login?error=entra_disabled", status_code=302)
+    tenant = _cfg.web.entra_tenant_id
+    client_id = _cfg.web.entra_client_id
+    redirect_uri = _cfg.web.entra_redirect_uri or str(request.url_for("entra_oauth_callback"))
+    scopes = _cfg.web.entra_scopes.replace(" ", "%20")
+    auth_url = (
+        f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize"
+        f"?client_id={client_id}&response_type=code&redirect_uri={urlquote(redirect_uri)}"
+        f"&scope={scopes}&response_mode=query"
+    )
+    return RedirectResponse(auth_url, status_code=302)
+
+
+@app.post("/api/devices/{ip}/monitoring")
+async def toggle_device_monitoring(ip: str, request: Request, user: str = Depends(require_login)):
+    if _storage is None:
+        return {"error": "not initialized"}
+    body = await request.json()
+    enabled = bool(body.get("enabled", True))
+    ok = _storage.set_device_monitoring(ip, enabled) if hasattr(_storage, "set_device_monitoring") else False
+    return {"success": ok, "ip": ip, "monitoring_enabled": enabled}
+
+
 @app.get("/users", response_class=HTMLResponse)
 async def users_page(request: Request, user: str = Depends(require_login)):
     if _cfg is None:
@@ -1055,6 +1176,15 @@ def init(storage: Storage, cfg: Config) -> None:
         elif geo_path:
             print(f"[logsentinel] Warning: configured geo mmdb_path does not exist on this system: {geo_path} (will auto-detect if possible)")
 
+    # Mount v2 API routes (after web module fully loaded to avoid circular imports)
+    try:
+        from .v2_api import router as v2_router
+        existing = {getattr(r, "path", "") for r in app.routes}
+        if "/api/v2/status" not in existing:
+            app.include_router(v2_router)
+    except Exception as exc:
+        logger.warning("v2 API routes not mounted: %s", exc)
+
 
 # Try to find templates next to this file, fall back to package
 _templates_dir = Path(__file__).parent / "templates"
@@ -1179,6 +1309,8 @@ async def dashboard(request: Request, user: str = Depends(require_login)):
     except Exception:
         pass
 
+    org_tasks = _storage.list_org_tasks(status="open", limit=10) if hasattr(_storage, "list_org_tasks") else []
+
     return get_templates().TemplateResponse(
         request,
         "dashboard.html",
@@ -1186,7 +1318,7 @@ async def dashboard(request: Request, user: str = Depends(require_login)):
             "total_logs": total_logs,
             "threats": threats,
             "analyses": recent_analyses,
-            "config": _cfg,
+            "cfg": _cfg,
             "device_intel": device_intel,
             "recent_devices": recent_devices,
             "ai_suggestion_count": ai_suggestion_count,
@@ -1194,6 +1326,7 @@ async def dashboard(request: Request, user: str = Depends(require_login)):
             "llm_analyses": llm_analyses,
             "llm_analyses_24h": llm_analyses_24h,
             "last_analysis": last_analysis,
+            "org_tasks": org_tasks,
         },
     )
 

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-rocketlogai
+  labels:
+    app: rocketlogai
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: rocketlogai
+  ports:
+    - name: web
+      port: {{ .Values.service.webPort }}
+      targetPort: web
+    - name: syslog-udp
+      port: {{ .Values.service.syslogPort }}
+      targetPort: syslog-udp
+      protocol: UDP
+    - name: syslog-tcp
+      port: {{ .Values.service.syslogPort }}
+      targetPort: syslog-tcp
+      protocol: TCP

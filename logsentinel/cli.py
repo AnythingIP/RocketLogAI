@@ -616,5 +616,23 @@ def enable_local_login(ctx, config: str | None):
         print("Then restart the service.")
 
 
+@main.command("mcp")
+@click.pass_context
+def mcp_server(ctx):
+    """Start the MCP server on stdio (for Claude Desktop, Cursor, etc.)."""
+    import asyncio
+    cfg = Config.load(ctx.obj["config_path"])
+    storage = Storage(cfg.storage.db_path)
+    from .v2_runtime import get_v2_runtime
+    from .mcp.tools import build_default_tools
+    from .mcp.server import MCPServer
+
+    rt = get_v2_runtime(cfg, storage)
+    tools = build_default_tools(storage=storage, brain=rt.brain)
+    server = MCPServer(version="2.0.0", tools=tools)
+    console.print("[bold green]RocketLogAI MCP server v2.0[/] — listening on stdio")
+    asyncio.run(server.run_stdio())
+
+
 if __name__ == "__main__":
     main()

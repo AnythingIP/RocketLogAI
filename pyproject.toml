@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "logsentinel"
-version = "1.4.0"
-description = "AI-powered syslog server and security analyzer using local LLMs (LM Studio compatible)"
+version = "2.0.0"
+description = "RocketLogAI v2 — AI-powered syslog security platform with RocketRemediate, RocketShield, and RocketAI Mobile"
 readme = { text = "RocketLogAI - AI-powered syslog security analyzer", content-type = "text/markdown" }
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -43,6 +43,15 @@ full = [
     "open-interpreter>=0.2.0",
     # Note: "web" extra is what you normally want for the dashboard + LLM features.
     # Use `pip install -e ".[web,ai]"` (or ".[full]") for the complete experience including conversational AI Operator and advanced auth.
+]
+v2 = [
+    "chromadb>=0.4.0",
+    "prometheus-client>=0.19.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
 ]
 
 [project.scripts]

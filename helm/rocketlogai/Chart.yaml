@@ -1,0 +1,14 @@
+apiVersion: v2
+name: rocketlogai
+description: RocketLogAI v2 — AI-powered syslog security platform
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
+keywords:
+  - security
+  - syslog
+  - ai
+  - siem
+maintainers:
+  - name: AnythingIP
+    url: https://github.com/AnythingIP/RocketLogAI
