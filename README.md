@@ -2,6 +2,8 @@
 
 **Production-ready local-first security platform** — syslog monitoring, AI threat detection, safe remediation, WAF/AV shield, and mobile assistant. MIT licensed.
 
+**Website:** [anythingip.github.io/RocketLogAI](https://anythingip.github.io/RocketLogAI/) · **Latest release:** [v2.0.0](https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0)
+
 ## v2 Ecosystem
 
 | Product | Description |

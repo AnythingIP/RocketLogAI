@@ -1,16 +1,21 @@
-# LogSentinel Usage Guide
+# RocketLogAI v2 Usage Guide
 
-> **This release (major update)**: 
-> - Threats grouped view now shows real per-occurrence src/dst IPs, ports, protocol (no more repeated sentences).
-> - Dashboard has new "Trusted Devices" emerald card + rich device intelligence.
-> - Monitors: unified credential profiles, English→AI script generator (plain text prompt → safe script + copy/use), failures-first recent results, probe on successful test.
-> - Device detail: rich Behavior Summary + manufacturer context from Wireshark+IEEE DBs + geo source badges + port hygiene.
-> - Full multi-source geo (MaxMind + any paid providers together, priority/merge).
-> - Microsoft 365 Copilot / Azure OpenAI as first-class LLM provider (configure via azure_* fields).
-> - White-label branding (instance_name + logo) with burned-in "powered by RocketLogAI (AnythingIP)" attribution.
-> - API tokens (rla_... Bearer tokens) for external scripts/agents/HA/automation addons — create in /config UI.
-> - HA: periodic open_threats + last_threat sensors + reliable mobile_app_* notifications now work when enabled.
-> All changes are additive, restart-safe, and preserve the existing local-LLM-only experience.
+> **v2.0.0 (production ecosystem)** — see [INSTALL.md](../INSTALL.md) and [architecture.md](architecture.md) for the full picture.
+>
+> **New in v2:**
+> - **Unified AI brain** — MCP server (`logsentinel mcp`), vector RAG, conversation memory
+> - **RocketRemediate** — dry-run, approval workflow, backups, rollback (`/api/v2/remediate/*`)
+> - **RocketShield** — WAF + AV + parental controls (`/api/v2/shield/*`)
+> - **RocketAI Mobile** — QR pairing, sync, assistant API (`/api/v2/mobile/*`)
+> - **UEBA** anomaly detection, structured audit logging, Prometheus metrics
+> - Organization tasks, per-section config saves, Entra OAuth, Helm chart
+>
+> **Carried forward from v1.x:**
+> - Threats grouped view with per-occurrence src/dst IPs, ports, protocol
+> - Dashboard trusted devices + rich device intelligence
+> - Monitors: credential profiles, English→AI script generator, probe on successful test
+> - Multi-source geo (MaxMind + paid providers), M365 Copilot / Azure OpenAI
+> - API tokens (`rla_...`), deep Home Assistant integration, white-label branding
 
 ## First Run Checklist
 

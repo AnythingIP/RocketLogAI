@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
-- RocketLogAI version: [e.g. v1.3]
+- RocketLogAI version: [e.g. v2.0.0]
 - Installation method: [Docker / native pip / Windows service]
 - LLM backend: [LM Studio / Ollama / Azure / M365 Copilot]
 - OS: [e.g. Ubuntu 22.04, macOS 15, Windows 11]

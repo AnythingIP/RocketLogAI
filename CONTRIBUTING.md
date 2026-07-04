@@ -1,13 +1,16 @@
-# Contributing to RocketLogAI
+# Contributing to RocketLogAI v2
 
 Thanks for your interest in improving RocketLogAI!
+
+**Docs:** [anythingip.github.io/RocketLogAI](https://anythingip.github.io/RocketLogAI/) · [Architecture](docs/architecture.md) · [Install guide](INSTALL.md)
 
 ## Quick Start for Contributors
 
 1. Fork the repo and clone your fork.
-2. Create a virtualenv and `pip install -e ".[web]"`.
+2. Create a virtualenv and `pip install -e ".[web,v2,dev]"` (add `ai` for the conversational operator).
 3. Copy `example-config.yaml` to `config.yaml` and point it at a local LLM (LM Studio / Ollama recommended for development).
-4. Run `logsentinel run` and send some test logs (see README or USAGE.md).
+4. Run `logsentinel run --web` and send some test logs (see README or USAGE.md).
+5. Run `pytest tests/ -v` before opening a PR (CI runs on Python 3.10–3.12).
 
 ## What We're Looking For
 
@@ -18,7 +21,7 @@ Thanks for your interest in improving RocketLogAI!
 - Home Assistant integration enhancements
 - Documentation, examples, and translations of error messages
 - Windows Event Log ingestion
-- Tests (we're light on them today)
+- Tests for v2 modules (brain, remediate, shield, MCP, UEBA, etc.)
 - UI/UX improvements to the FastAPI + HTMX dashboard
 
 ## Pull Request Guidelines
