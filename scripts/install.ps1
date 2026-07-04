@@ -1,4 +1,4 @@
-# RocketLogAI v1.3 - One-click installer for Windows (Daily Briefing edition)
+# RocketLogAI v2.0 - One-click installer for Windows
 # Run from an elevated PowerShell prompt
 
 $ErrorActionPreference = "Stop"
@@ -7,7 +7,7 @@ Write-Host "🚀 RocketLogAI Installer for Windows" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SourceRoot = Split-Path -Parent $ScriptDir   # the RocketLogAI-v1.2-Installer folder
+$SourceRoot = Split-Path -Parent $ScriptDir   # RocketLogAI repo root
 
 $InstallDir = "D:\logsentinel"
 $InstallDir = Read-Host "Enter target directory (default D:\logsentinel)"
@@ -55,7 +55,7 @@ robocopy "$SourceRoot\scripts" "$InstallDir\scripts" /E /NFL /NDL /NJH /NJS | Ou
 Write-Host "`n[4/5] Installing dependencies..." -ForegroundColor Yellow
 pip install --upgrade pip setuptools wheel
 Set-Location $InstallDir
-pip install ".[web]"
+pip install ".[web,v2,ai]"
 
 Write-Host "`n[4.5/5] Installing Phase 3/4 AI + Auth extras (open-interpreter for conversational operator, cryptography for encrypted secrets)..." -ForegroundColor Yellow
 pip install open-interpreter cryptography
@@ -91,7 +91,7 @@ Write-Host "New in this build (Phases 1-4):" -ForegroundColor Yellow
 Write-Host "  - Powerful AI Assistant powered by Open Interpreter (natural language device ops, plans, confirmations, dynamic tools)." -ForegroundColor Yellow
 Write-Host "  - Advanced enterprise auth: AD/LDAP with service accounts + groups, Entra ID, full RBAC (Viewer/Analyst/Operator/Admin) from directory groups." -ForegroundColor Yellow
 Write-Host "  - Encrypted secrets for service accounts/Entra, enhanced test tools, RBAC-protected routes." -ForegroundColor Yellow
-Write-Host "Use: pip install -e '.[web,ai]' for full experience." -ForegroundColor Yellow
+Write-Host "RocketLogAI v2.0 installed. Full extras: pip install -e '.[web,v2,ai]'" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Python download link (if you ever need it again):" -ForegroundColor Cyan
 Write-Host "https://www.python.org/downloads/windows/" -ForegroundColor Cyan

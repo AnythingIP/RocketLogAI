@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architecture • RocketLogAI v2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0a0a0c; }
+        .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; letter-spacing: -0.025em; }
+        .section-card { background: #111113; border: 1px solid #27272a; }
+        pre { background: #0a0a0c; border: 1px solid #27272a; border-radius: 12px; padding: 1rem; overflow-x: auto; font-size: 0.75rem; }
+        code { color: #6ee7b7; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        th, td { border: 1px solid #27272a; padding: 0.5rem 0.75rem; text-align: left; }
+        th { background: #18181b; color: #a1a1aa; }
+    </style>
+</head>
+<body class="text-zinc-200">
+    <nav class="border-b border-zinc-800 bg-[#0a0a0c]/95">
+        <div class="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
+            <a href="index.html" class="font-display text-lg">← RocketLogAI</a>
+            <span class="text-xs text-emerald-400">v2.0 Architecture</span>
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto px-6 py-12 prose prose-invert max-w-none">
+        <h1 class="font-display text-4xl tracking-tighter mb-2">RocketLogAI v2 Architecture</h1>
+        <p class="text-zinc-400 mb-8">Local-first security platform — four products, one unified AI brain.</p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-10 not-prose">
+            <div class="section-card rounded-2xl p-5"><strong>🚀 RocketLogAI</strong><br><span class="text-sm text-zinc-400">Syslog, threats, AI assistant, devices, briefing</span></div>
+            <div class="section-card rounded-2xl p-5"><strong>🔧 RocketRemediate</strong><br><span class="text-sm text-zinc-400">Dry-run, approval, backup, rollback</span></div>
+            <div class="section-card rounded-2xl p-5"><strong>🛡️ RocketShield</strong><br><span class="text-sm text-zinc-400">WAF, AV, parental controls (inline/SPAN)</span></div>
+            <div class="section-card rounded-2xl p-5"><strong>📱 RocketAI Mobile</strong><br><span class="text-sm text-zinc-400">QR pairing, sync, remote control API</span></div>
+        </div>
+
+        <h2 class="font-display text-2xl mb-3">Data Flow</h2>
+        <pre><code>Syslog UDP/TCP (5140) ──► Parser ──► SQLite Storage
+                              │
+                              ├──► Rule Engine ──► Threats
+                              ├──► UEBA Detector ──► Anomalies
+                              └──► Vector Store (RAG) ──► Unified AI Brain
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
+              AI Assistant        Daily Briefing      MCP Server
+              RocketRemediate     Mobile API          External AI Clients</code></pre>
+
+        <h2 class="font-display text-2xl mt-10 mb-3">Core Modules</h2>
+        <ul class="text-zinc-300 space-y-2 text-sm">
+            <li><strong class="text-emerald-400">logsentinel/brain/</strong> — VectorStore, RAG, ConversationMemory, AIOrchestrator</li>
+            <li><strong class="text-emerald-400">logsentinel/mcp/</strong> — MCP server (stdio). Run: <code>logsentinel mcp</code></li>
+            <li><strong class="text-emerald-400">logsentinel/remediate/</strong> — Approval workflow, backups, rollback plugins</li>
+            <li><strong class="text-emerald-400">logsentinel/shield/</strong> — WAF, AV scanner, parental controls</li>
+            <li><strong class="text-emerald-400">logsentinel/ueba/</strong> — Behavioral anomaly detection + explainable reports</li>
+            <li><strong class="text-emerald-400">logsentinel/audit/</strong> — Tamper-evident audit trail</li>
+        </ul>
+
+        <h2 class="font-display text-2xl mt-10 mb-3">v2 API Endpoints</h2>
+        <div class="section-card rounded-2xl overflow-hidden not-prose">
+            <table>
+                <tr><th>Endpoint</th><th>Description</th></tr>
+                <tr><td><code>GET /api/v2/status</code></td><td>Ecosystem health</td></tr>
+                <tr><td><code>GET /api/v2/metrics</code></td><td>Prometheus metrics</td></tr>
+                <tr><td><code>POST /api/v2/brain/ask</code></td><td>Unified AI query</td></tr>
+                <tr><td><code>POST /api/v2/remediate/dry-run</code></td><td>Safe remediation preview</td></tr>
+                <tr><td><code>GET /api/v2/ueba/report</code></td><td>UEBA summary</td></tr>
+                <tr><td><code>GET /api/v2/tasks</code></td><td>Organization tasks</td></tr>
+                <tr><td><code>POST /api/config/save/{section}</code></td><td>Per-section config save</td></tr>
+            </table>
+        </div>
+
+        <h2 class="font-display text-2xl mt-10 mb-3">Deployment</h2>
+        <pre><code>pip install -e ".[web,v2,ai]"
+logsentinel run --web
+
+docker compose up -d --build
+
+helm install rocketlogai ./helm/rocketlogai</code></pre>
+
+        <p class="text-xs text-zinc-500 mt-12">MIT licensed · <a href="https://github.com/AnythingIP/RocketLogAI" class="text-emerald-400">GitHub</a> · <a href="index.html" class="text-emerald-400">Back to site</a></p>
+    </main>
+</body>
+</html>

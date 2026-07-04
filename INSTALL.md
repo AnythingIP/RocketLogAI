@@ -1,16 +1,15 @@
-# RocketLogAI Installation Guide (v1.3 - Daily Briefing / Operator Companion)
+# RocketLogAI v2.0 Installation Guide
 
-RocketLogAI is a local-first, AI-powered security monitoring platform. It ingests syslog (and other sources), uses your own LLM (local or Microsoft 365 Copilot / Azure OpenAI) for analysis, and includes powerful features like:
+RocketLogAI v2 is a production-ready, local-first security platform. It ingests syslog, uses your own LLM for analysis, and ships a full ecosystem:
 
-- IBM i (AS/400) conversational automation via English prompts
-- Multi-source geolocation
-- Deep service monitors + English-to-script generation
-- Server Activity dashboard with AI suggestions
-- AI Assistant (/assistant) for self-documenting help + admin-reviewed feature suggestions
-- Home Assistant integration
-- API tokens for external scripts
+- **RocketLogAI** — Core monitoring, AI assistant, devices, daily briefing
+- **RocketRemediate** — Safe remediation (dry-run, approval, backup, rollback)
+- **RocketShield** — WAF + AV on decrypted traffic, parental controls
+- **RocketAI Mobile** — API for iOS/Android/TV (QR pairing, sync, remote control)
+- Unified AI brain (MCP server, vector RAG), UEBA, audit logging, Prometheus metrics
+- Home Assistant integration, enterprise auth (AD/LDAP + Entra ID), Helm chart
 
-This guide covers the easiest ways to get it running so it "just works".
+This guide covers the easiest ways to get v2 running.
 
 ---
 
@@ -18,9 +17,9 @@ This guide covers the easiest ways to get it running so it "just works".
 
 ```bash
 # 1. Clone or copy the installer files
-git clone <your-repo>   # or extract the RocketLogAI-v1.2-Installer tarball
+git clone https://github.com/AnythingIP/RocketLogAI.git
 
-cd RocketLogAI-v1.2-Installer
+cd RocketLogAI
 
 # 2. Copy example config and edit it
 cp example-config.yaml config.yaml
@@ -132,7 +131,7 @@ See the expanded "Windows Domain Authentication" and new "Microsoft Entra ID" se
 - Service account passwords and Entra secrets are encrypted on save.
 
 **Full feature install (recommended):**
-pip install -e ".[web,ai]"
+pip install -e ".[web,v2,ai]"
 
 This page is the living documentation + feedback system.
 

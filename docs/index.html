@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RocketLogAI • by AnythingIP</title>
-    <meta name="description" content="AI-powered local syslog server and security analyzer. Uses your own offline LLM (LM Studio, Ollama, etc.) for real-time threat detection. Zero cloud. Full privacy. Deep Home Assistant integration.">
+    <meta name="description" content="RocketLogAI v2.0 — local-first security platform with AI brain, RocketRemediate, RocketShield, and mobile API. Your LLM, your data, zero cloud. MIT licensed.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
     <style>
@@ -103,6 +103,7 @@
             </div>
             
             <div class="hidden md:flex items-center gap-8 text-sm">
+                <a href="#ecosystem" class="hover:text-white text-zinc-400 transition">Ecosystem</a>
                 <a href="#features" class="hover:text-white text-zinc-400 transition">Features</a>
                 <a href="#how" class="hover:text-white text-zinc-400 transition">How it works</a>
                 <a href="#screenshots" class="hover:text-white text-zinc-400 transition">Screenshots</a>
@@ -137,6 +138,7 @@
     <div id="mobile-nav" class="hidden md:hidden fixed inset-0 z-[100] bg-black/70" onclick="toggleMobileNav()">
         <div class="absolute right-0 top-0 h-full w-64 bg-[#111113] border-l border-zinc-800 p-6" onclick="event.stopImmediatePropagation()">
             <div class="flex flex-col gap-4 text-sm pt-8">
+                <a href="#ecosystem" onclick="toggleMobileNav()" class="py-2">Ecosystem</a>
                 <a href="#features" onclick="toggleMobileNav()" class="py-2">Features</a>
                 <a href="#how" onclick="toggleMobileNav()" class="py-2">How it works</a>
                 <a href="#screenshots" onclick="toggleMobileNav()" class="py-2">Screenshots</a>
@@ -153,8 +155,8 @@
         <div class="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between text-xs">
             <div class="flex items-center gap-2 text-emerald-400">
                 <span class="inline-block w-2 h-2 bg-emerald-400 rounded-full"></span>
-                <span class="font-medium">Now open source</span>
-                <span class="text-zinc-500">— MIT licensed on GitHub</span>
+                <span class="font-medium">v2.0 Production Release</span>
+                <span class="text-zinc-500">— MIT licensed · CI green · <a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline hover:text-white">Latest: v2.0.0</a></span>
             </div>
             <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="font-medium flex items-center gap-1 hover:text-white transition text-emerald-400">
                 Star <span class="hidden sm:inline">AnythingIP/RocketLogAI</span> on GitHub →
@@ -176,9 +178,8 @@
         </h1>
         
         <p class="max-w-2xl mx-auto text-xl text-zinc-400 mb-8">
-            RocketLogAI is an AI-powered local syslog server and security analyzer. 
-            It watches everything your devices send, uses <span class="text-white">your own offline LLM</span> for deep analysis, 
-            and keeps every byte on your hardware.
+            RocketLogAI v2 is a <span class="text-white">production security platform</span> — syslog monitoring, unified AI brain, 
+            safe remediation, WAF/AV shield, and mobile API. Uses <span class="text-white">your own offline LLM</span> and keeps every byte on your hardware.
         </p>
         
         <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -196,7 +197,7 @@
         <div class="mt-6 text-xs text-zinc-500 flex items-center justify-center gap-4">
             <div>Docker • Python • One binary feel</div>
             <div>•</div>
-            <div><a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v1.3" class="underline hover:text-white">v1.3 “Daily Briefing”</a> • MIT licensed • <a href="https://github.com/AnythingIP/RocketLogAI" class="underline hover:text-white">AnythingIP/RocketLogAI</a></div>
+            <div><a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline hover:text-white text-emerald-400">v2.0.0 Production Ecosystem</a> • MIT • <a href="architecture.html" class="underline hover:text-white">Architecture</a></div>
         </div>
     </div>
 
@@ -233,6 +234,37 @@
             <div class="text-emerald-400 text-xs tracking-widest">SAFETY</div>
             <div class="stat mt-3">Guarded</div>
             <div class="text-zinc-400 mt-1">Remediation is disabled by default. Multiple layers: dry-run, confirmation, allow-lists.</div>
+        </div>
+    </div>
+
+    <!-- v2 Ecosystem -->
+    <div id="ecosystem" class="max-w-6xl mx-auto px-6 pt-8 pb-8">
+        <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-1">v2 ECOSYSTEM</div>
+        <h2 class="font-display text-4xl tracking-tighter mb-6">Four products. One unified AI brain.</h2>
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="section-card rounded-3xl p-6 border-emerald-900/40">
+                <div class="text-2xl mb-2">🚀</div>
+                <div class="font-semibold mb-1">RocketLogAI</div>
+                <div class="text-sm text-zinc-400">Core syslog, threat detection, AI assistant, devices, daily briefing, config.</div>
+            </div>
+            <div class="section-card rounded-3xl p-6 border-orange-900/40">
+                <div class="text-2xl mb-2">🔧</div>
+                <div class="font-semibold mb-1">RocketRemediate</div>
+                <div class="text-sm text-zinc-400">Dry-run remediation, approval workflow, backups, rollback orchestration.</div>
+            </div>
+            <div class="section-card rounded-3xl p-6 border-sky-900/40">
+                <div class="text-2xl mb-2">🛡️</div>
+                <div class="font-semibold mb-1">RocketShield</div>
+                <div class="text-sm text-zinc-400">WAF + AV on decrypted traffic, parental controls. Inline or SPAN mode.</div>
+            </div>
+            <div class="section-card rounded-3xl p-6 border-purple-900/40">
+                <div class="text-2xl mb-2">📱</div>
+                <div class="font-semibold mb-1">RocketAI Mobile</div>
+                <div class="text-sm text-zinc-400">iOS/Android/TV API — QR pairing, local-first sync, remote PC/Mac control.</div>
+            </div>
+        </div>
+        <div class="mt-4 text-center text-xs text-zinc-500">
+            Shared: MCP server · Vector RAG · UEBA · Audit logging · Prometheus metrics · Zero Trust RBAC
         </div>
     </div>
 
@@ -299,6 +331,24 @@
                 <div class="feature-icon mb-4 text-emerald-400">🛡️</div>
                 <div class="font-semibold mb-1">Fast Deterministic Rules + MAC + Blacklists</div>
                 <div class="text-sm text-zinc-400">Built-in high-value patterns for brute force, sudo abuse, crypto miners, kernel panics, etc. + custom patterns. MAC vendor lookup (IEEE + Wireshark manuf) + learned device behavior profiles.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6 border-emerald-900/30">
+                <div class="feature-icon mb-4 text-emerald-400">🔗</div>
+                <div class="font-semibold mb-1">Unified AI Brain + MCP</div>
+                <div class="text-sm text-zinc-400">Vector RAG memory shared across all products. MCP server for Claude Desktop, Cursor, etc. Run <code class="text-emerald-400">logsentinel mcp</code> on stdio.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6 border-orange-900/30">
+                <div class="feature-icon mb-4 text-orange-400">📊</div>
+                <div class="font-semibold mb-1">UEBA + Explainable Reports</div>
+                <div class="text-sm text-zinc-400">Behavioral anomaly detection with human-readable explanations. Organization tasks with AI-assisted remediation on the dashboard.</div>
+            </div>
+
+            <div class="section-card rounded-3xl p-6 border-sky-900/30">
+                <div class="feature-icon mb-4 text-sky-400">🔐</div>
+                <div class="font-semibold mb-1">Enterprise Auth &amp; Audit</div>
+                <div class="text-sm text-zinc-400">AD/LDAP + Entra ID OAuth. Four-tier RBAC. Full audit trail. Prometheus metrics at <code class="text-emerald-400">/api/v2/metrics</code>.</div>
             </div>
         </div>
     </div>
@@ -493,7 +543,7 @@
                 <div class="md:col-span-3">
                     <div class="uppercase tracking-[2px] text-xs text-emerald-400 mb-2">OPEN SOURCE</div>
                     <div class="font-display text-3xl tracking-tighter mb-3">Built in public. For everyone.</div>
-                    <p class="text-zinc-400">The full source (Python core, FastAPI web UI, templates, 20+ prebuilt remediation scripts, rules, HA integration, IBM i automation, installers for Linux/Windows/Docker) is on GitHub under the MIT license.</p>
+                    <p class="text-zinc-400">The full v2 source — Python core, FastAPI web UI, unified AI brain, RocketRemediate, RocketShield, mobile API, Helm chart, CI/tests, installers — is on GitHub under the MIT license.</p>
                     <p class="mt-3 text-sm text-zinc-400">Contributions welcome: new parsers, custom rules, more remediation scripts, better prompts, Windows Event Log support, docs, or anything else that makes local log intelligence better.</p>
                 </div>
                 <div class="md:col-span-2 flex flex-col gap-3">
@@ -536,7 +586,7 @@ cp example-config.yaml config.yaml
 docker compose up -d --build
 # Open http://your-server:8787   (default login: admin / admin — change it!)</code></pre>
                 </div>
-                <div class="text-[10px] text-emerald-400/80">Or download the <a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v1.3" class="underline">v1.3 installer tarball</a> for one-click Linux/Windows.</div>
+                <div class="text-[10px] text-emerald-400/80">Download <a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline font-medium">v2.0.0 release</a> · one-click Linux installer with systemd · Helm chart included.</div>
                 <button onclick="copyDocker()" 
                         class="text-xs px-4 py-2 rounded-2xl border border-zinc-700 hover:bg-zinc-900 transition flex items-center gap-2">
                     <span>Copy commands</span>
@@ -549,10 +599,10 @@ docker compose up -d --build
                 <div class="code-block rounded-2xl p-4 text-xs overflow-x-auto mb-3">
 <pre><code>git clone https://github.com/AnythingIP/RocketLogAI.git
 cd RocketLogAI
-pip install -e ".[web]"
+pip install -e ".[web,v2,ai]"
 logsentinel example-config -o config.yaml
 # edit llm.base_url in config.yaml
-logsentinel run
+logsentinel run --web
 # or for real syslog port 514: sudo logsentinel run</code></pre>
                 </div>
                 <div class="text-xs text-zinc-500">Also ships one-click installers for Linux (systemd) and Windows (NSSM / scheduled task).</div>
@@ -575,9 +625,10 @@ logsentinel run
                 © AnythingIP • RocketLogAI is open source under the MIT license.
             </div>
             <div class="flex items-center gap-6">
-                <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="hover:text-white">Documentation</a>
+                <a href="architecture.html" class="hover:text-white">Architecture</a>
+                <a href="https://github.com/AnythingIP/RocketLogAI/blob/main/INSTALL.md" target="_blank" class="hover:text-white">Install Guide</a>
                 <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" id="footer-github" class="hover:text-white">GitHub</a>
-                <a href="https://github.com/AnythingIP/RocketLogAI/releases" target="_blank" class="hover:text-white">Releases</a>
+                <a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" target="_blank" class="hover:text-white text-emerald-400">v2.0.0 Release</a>
                 <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="hover:text-white text-emerald-400">Sponsor / Support development</a>
             </div>
         </div>

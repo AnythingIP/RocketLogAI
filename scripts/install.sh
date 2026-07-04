@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # RocketLogAI one-click installer for Linux / macOS / WSL
-# Run this from the extracted RocketLogAI-v1.3-Installer directory (or current source)
+# Run from the RocketLogAI repo root (or extracted v2.0 installer directory)
 
 set -e
 
