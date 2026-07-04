@@ -3,7 +3,7 @@ version: "3.9"
 services:
   rocketlogai:
     build: .
-    image: rocketlogai:1.3
+    image: rocketlogai:2.0
     container_name: rocketlogai
     restart: unless-stopped
 

@@ -30,37 +30,82 @@
     </div>
 </div>
 
-<!-- Big Metrics -->
+<!-- Big Metrics (clickable → AI action plans) -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mb-6">
-    <div class="section-card rounded-3xl p-5">
+    <button type="button" onclick="openActionPlan('logs')" class="section-card rounded-3xl p-5 text-left hover:border-emerald-800/60 transition cursor-pointer overflow-hidden">
         <div class="text-xs uppercase tracking-[1px] text-zinc-500">Total Logs</div>
-        <div class="text-5xl sm:text-6xl font-semibold tracking-tighter metric-value mt-1">{{ total_logs }}</div>
-        <div class="text-emerald-400 text-xs mt-2">All time in DB</div>
-    </div>
+        <div class="text-4xl sm:text-5xl font-semibold tracking-tighter tabular-nums metric-value mt-1 truncate">{{ total_logs }}</div>
+        <div class="text-emerald-400 text-xs mt-2">All time in DB · click for AI plan</div>
+    </button>
     
-    <div class="section-card rounded-3xl p-5">
+    <button type="button" onclick="openActionPlan('open_threats')" class="section-card rounded-3xl p-5 text-left hover:border-orange-800/60 transition cursor-pointer overflow-hidden">
         <div class="text-xs uppercase tracking-[1px] text-zinc-500">Open Threats</div>
-        <div class="text-5xl sm:text-6xl font-semibold tracking-tighter text-orange-400 metric-value mt-1" id="open-threat-count">—</div>
-        <div class="text-xs mt-2 flex items-center gap-1">
-            <span class="text-orange-400">Requires attention</span>
-        </div>
-    </div>
+        <div class="text-4xl sm:text-5xl font-semibold tracking-tighter tabular-nums text-orange-400 metric-value mt-1 truncate" id="open-threat-count">—</div>
+        <div class="text-xs mt-2 text-orange-400">Requires attention · click for AI plan</div>
+    </button>
     
-    <div class="section-card rounded-3xl p-5">
+    <button type="button" onclick="openActionPlan('high_severity')" class="section-card rounded-3xl p-5 text-left hover:border-red-800/60 transition cursor-pointer overflow-hidden">
         <div class="text-xs uppercase tracking-[1px] text-zinc-500">High/Critical</div>
-        <div class="text-5xl sm:text-6xl font-semibold tracking-tighter text-red-400 metric-value mt-1" id="high-sev-count">—</div>
-        <div class="text-xs mt-2 text-red-400">Last 7 days</div>
-    </div>
+        <div class="text-4xl sm:text-5xl font-semibold tracking-tighter tabular-nums text-red-400 metric-value mt-1 truncate" id="high-sev-count">—</div>
+        <div class="text-xs mt-2 text-red-400">Last 7 days · click for AI plan</div>
+    </button>
     
-    <div class="section-card rounded-3xl p-5 flex flex-col justify-between">
+    <button type="button" onclick="openActionPlan('analyses')" class="section-card rounded-3xl p-5 text-left hover:border-emerald-800/60 transition cursor-pointer flex flex-col justify-between overflow-hidden">
         <div>
             <div class="text-xs uppercase tracking-[1px] text-zinc-500">AI Analyses Run</div>
-            <div class="text-5xl font-semibold tracking-tighter mt-1">{{ total_analyses }}</div>
+            <div class="text-4xl font-semibold tracking-tighter tabular-nums mt-1 truncate">{{ total_analyses }}</div>
             <div class="text-[10px] text-emerald-400/80 mt-0.5">
                 {% if llm_analyses_24h %}{{ llm_analyses_24h }} with LLM in last 24h{% else %}{{ llm_analyses }} ever used the LLM{% endif %}
             </div>
         </div>
-        <div class="text-xs text-emerald-400">Powered by local LLM</div>
+        <div class="text-xs text-emerald-400">Powered by local LLM · click for AI plan</div>
+    </button>
+</div>
+
+<!-- Organization Tasks -->
+<div class="section-card rounded-3xl p-5 mb-6" id="org-tasks-panel">
+    <div class="flex items-center justify-between mb-3">
+        <div class="font-semibold flex items-center gap-2">
+            📋 Organization Tasks
+            <span class="text-[10px] px-2 py-px bg-zinc-800 text-zinc-400 rounded-full">{{ org_tasks|length }} open</span>
+        </div>
+        <button onclick="createTaskFromThreat()" class="text-xs px-3 py-1 rounded-xl bg-emerald-900/50 hover:bg-emerald-800 text-emerald-300 border border-emerald-800">+ New Task</button>
+    </div>
+    {% if org_tasks %}
+    <div class="space-y-2 text-sm">
+        {% for t in org_tasks %}
+        <div class="flex items-center gap-3 bg-zinc-950 rounded-2xl px-4 py-3 border border-zinc-800">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-medium
+                {% if t.severity == 'critical' %}bg-red-900 text-red-300
+                {% elif t.severity == 'high' %}bg-orange-900 text-orange-300
+                {% else %}bg-zinc-800 text-zinc-300{% endif %}">{{ t.severity }}</span>
+            <div class="flex-1 min-w-0">
+                <div class="font-medium truncate">{{ t.title }}</div>
+                <div class="text-[10px] text-zinc-500">{{ t.source }} · {{ t.created_by or 'system' }}</div>
+            </div>
+            <button onclick="ackTask({{ t.id }})" class="text-xs px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700">Ack</button>
+            <button onclick="assignTask({{ t.id }})" class="text-xs px-2 py-1 rounded-lg bg-purple-900/50 hover:bg-purple-800 text-purple-300">Assign</button>
+            <a href="/assistant?prompt=Create+remediation+plan+for+task+{{ t.id }}:+{{ t.title|urlencode }}" class="text-xs px-2 py-1 rounded-lg bg-emerald-900/50 hover:bg-emerald-800 text-emerald-300">AI Fix</a>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-sm text-zinc-500">No open tasks. Click a security metric above to generate an AI action plan, or create a task manually.</div>
+    {% endif %}
+</div>
+
+<!-- AI Action Plan Modal -->
+<div id="action-plan-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div class="section-card rounded-3xl p-6 max-w-lg w-full max-h-[80vh] overflow-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="font-semibold text-lg" id="action-plan-title">AI Action Plan</h3>
+            <button onclick="closeActionPlan()" class="text-zinc-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <div id="action-plan-content" class="text-sm text-zinc-300 whitespace-pre-wrap">Loading...</div>
+        <div class="mt-4 flex gap-2">
+            <a href="/assistant" id="action-plan-assistant-link" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Open in Assistant</a>
+            <button onclick="closeActionPlan()" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm">Close</button>
+        </div>
     </div>
 </div>
 
@@ -386,6 +431,71 @@
 
     function exportThreats(format) {
         window.location = `/export/threats.${format}`;
+    }
+
+    const ACTION_PLAN_PROMPTS = {
+        logs: 'Review our total log volume and suggest retention, alerting, and storage optimizations.',
+        open_threats: 'Analyze all open threats and create a prioritized remediation action plan with specific steps.',
+        high_severity: 'Review high and critical severity threats from the last 7 days. Provide an executive summary and immediate actions.',
+        analyses: 'Review our AI analysis coverage and suggest improvements to detection rules and LLM prompts.',
+    };
+
+    async function openActionPlan(metric) {
+        const modal = document.getElementById('action-plan-modal');
+        const content = document.getElementById('action-plan-content');
+        const title = document.getElementById('action-plan-title');
+        const link = document.getElementById('action-plan-assistant-link');
+        modal.classList.remove('hidden');
+        title.textContent = 'AI Action Plan: ' + metric.replace('_', ' ');
+        content.textContent = 'Generating action plan...';
+        const prompt = ACTION_PLAN_PROMPTS[metric] || 'Create a security action plan.';
+        link.href = '/assistant?prompt=' + encodeURIComponent(prompt);
+        try {
+            const res = await fetch('/api/v2/brain/ask', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query: prompt, session_id: 'dashboard:' + metric})
+            });
+            const data = await res.json();
+            content.textContent = data.response || 'No response from AI brain.';
+        } catch (e) {
+            content.textContent = 'Could not reach AI brain. Open the Assistant for a manual plan.';
+        }
+    }
+
+    function closeActionPlan() {
+        document.getElementById('action-plan-modal').classList.add('hidden');
+    }
+
+    async function ackTask(id) {
+        await fetch('/api/v2/tasks/' + id, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: 'acknowledged'})
+        });
+        location.reload();
+    }
+
+    async function assignTask(id) {
+        const who = prompt('Assign to (username):');
+        if (!who) return;
+        await fetch('/api/v2/tasks/' + id, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: 'assigned', assigned_to: who})
+        });
+        location.reload();
+    }
+
+    async function createTaskFromThreat() {
+        const title = prompt('Task title:');
+        if (!title) return;
+        await fetch('/api/v2/tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title, severity: 'medium', source: 'manual'})
+        });
+        location.reload();
     }
 </script>
 {% endblock %}

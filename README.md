@@ -1,4 +1,21 @@
-# RocketLogAI (by AnythingIP)
+# RocketLogAI v2.0 (by AnythingIP)
+
+**Production-ready local-first security platform** — syslog monitoring, AI threat detection, safe remediation, WAF/AV shield, and mobile assistant. MIT licensed.
+
+## v2 Ecosystem
+
+| Product | Description |
+|---------|-------------|
+| **RocketLogAI** | Core syslog server, AI assistant, devices, daily briefing, config |
+| **RocketRemediate** | Dry-run remediation, approval workflow, backups, rollback |
+| **RocketShield** | WAF + AV on decrypted traffic, parental controls (inline/SPAN) |
+| **RocketAI Mobile** | iOS/Android/TV API — QR pairing, sync, remote PC/Mac control |
+
+**New in v2:** Unified AI brain (MCP + vector RAG), UEBA anomaly detection, full audit logging, Prometheus metrics, organization tasks, per-section config saves, Helm chart, pytest CI, pfSense/OPNsense/Wazuh integrations.
+
+See [docs/architecture.md](docs/architecture.md) for full architecture.
+
+---
 
 **AI-powered local syslog server + security analyzer** that uses offline LLMs (LM Studio, Ollama, etc.) to detect threats and anomalies in real time.
 
@@ -29,8 +46,9 @@ RocketLogAI is the opposite: everything runs on your machine, against your local
 ### 1. Install
 
 ```bash
-cd logsentinel
-pip install -e ".[web]"     # recommended (includes FastAPI dashboard + extras)
+pip install -e ".[web,v2,ai]"   # full v2 experience (recommended)
+# or minimal:
+pip install -e ".[web]"     # dashboard + core (no vector DB / open-interpreter)
 # or for the absolute minimum core
 pip install -e .
 # or (if you can't use editable install)

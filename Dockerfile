@@ -1,4 +1,4 @@
-# RocketLogAI - AI-Powered Syslog Security Analyzer (v1.3 - Daily Briefing edition)
+# RocketLogAI v2.0 — Production Docker image
 # Docker image for easy deployment
 
 FROM python:3.11-slim
@@ -24,7 +24,7 @@ COPY requirements.txt* ./
 # cryptography for encrypted domain/Entra service secrets (Phase 4).
 # open-interpreter for the powerful conversational AI Assistant / Operator (Phase 3).
 RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir -e ".[web]" && \
+    pip install --no-cache-dir -e ".[web,v2]" && \
     pip install --no-cache-dir open-interpreter cryptography || true
 
 # Copy the application code

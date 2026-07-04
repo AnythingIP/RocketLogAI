@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-rocketlogai
+  labels:
+    app: rocketlogai
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: rocketlogai
+  template:
+    metadata:
+      labels:
+        app: rocketlogai
+      annotations:
+        prometheus.io/scrape: "{{ .Values.monitoring.prometheus.enabled }}"
+        prometheus.io/path: "{{ .Values.monitoring.prometheus.path }}"
+        prometheus.io/port: "{{ .Values.service.webPort }}"
+    spec:
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: rocketlogai
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["run", "--web"]
+          ports:
+            - name: web
+              containerPort: {{ .Values.service.webPort }}
+            - name: syslog-udp
+              containerPort: {{ .Values.service.syslogPort }}
+              protocol: UDP
+            - name: syslog-tcp
+              containerPort: {{ .Values.service.syslogPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+            initialDelaySeconds: 40
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v2/status
+              port: web
+            initialDelaySeconds: 20
+            periodSeconds: 15
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-rocketlogai-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

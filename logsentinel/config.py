@@ -344,6 +344,58 @@ class DataSourcesConfig:
 
 
 @dataclass
+class SyslogForwardingConfig:
+    """Port forwarding support (e.g. 514 → 5140) and WEF/syslog client settings."""
+    enabled: bool = False
+    forward_from_port: int = 514
+    forward_to_port: int = 5140
+    wef_enabled: bool = False
+    tls_enabled: bool = False
+    tls_verify: bool = True
+    protocol: Literal["udp", "tcp"] = "udp"
+
+
+@dataclass
+class BrainConfig:
+    """Unified AI brain — MCP, vector DB, RAG."""
+    enabled: bool = True
+    persist_dir: str = "./data/brain"
+    vector_backend: str = "auto"  # auto | chroma | sqlite
+    mcp_enabled: bool = True
+    rag_enabled: bool = True
+    memory_enabled: bool = True
+
+
+@dataclass
+class ShieldConfigData:
+    """RocketShield WAF + AV + parental controls."""
+    enabled: bool = False
+    mode: str = "disabled"  # inline | span | tap | disabled
+    interface: str = ""
+    mirror_interface: str = ""
+    decrypt_tls: bool = False
+    waf_enabled: bool = True
+    av_enabled: bool = True
+    parental_enabled: bool = False
+    block_mode: str = "detect"  # detect | block
+
+
+@dataclass
+class MobileConfig:
+    """RocketAI Mobile server settings."""
+    enabled: bool = True
+    pairing_ttl_seconds: int = 300
+    sync_enabled: bool = True
+
+
+@dataclass
+class TenantConfig:
+    """Multi-tenant settings."""
+    enabled: bool = False
+    default_tenant_id: str = "default"
+
+
+@dataclass
 class Config:
     syslog: SyslogConfig = field(default_factory=SyslogConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
@@ -362,6 +414,13 @@ class Config:
     # New: Pluggable agent-less data sources / log ingestion methods (syslog variants, Windows WMI/WinRM, IBM i 5250/SSH, etc.)
     # All methods are configured by admins; credentials come from credential_profiles for security.
     data_sources: "DataSourcesConfig" = field(default_factory=lambda: DataSourcesConfig())
+
+    # v2 ecosystem
+    brain: BrainConfig = field(default_factory=BrainConfig)
+    shield: ShieldConfigData = field(default_factory=ShieldConfigData)
+    mobile: MobileConfig = field(default_factory=MobileConfig)
+    syslog_forwarding: SyslogForwardingConfig = field(default_factory=SyslogForwardingConfig)
+    tenant: TenantConfig = field(default_factory=TenantConfig)
 
     # Runtime
     config_path: str | None = None
@@ -618,6 +677,48 @@ class Config:
             cfg.web.letsencrypt_staging = w.get("letsencrypt_staging", cfg.web.letsencrypt_staging)
 
             cfg.web.force_https_redirect = w.get("force_https_redirect", cfg.web.force_https_redirect)
+
+        if "brain" in raw:
+            b = raw["brain"]
+            cfg.brain.enabled = b.get("enabled", cfg.brain.enabled)
+            cfg.brain.persist_dir = b.get("persist_dir", cfg.brain.persist_dir)
+            cfg.brain.vector_backend = b.get("vector_backend", cfg.brain.vector_backend)
+            cfg.brain.mcp_enabled = b.get("mcp_enabled", cfg.brain.mcp_enabled)
+            cfg.brain.rag_enabled = b.get("rag_enabled", cfg.brain.rag_enabled)
+            cfg.brain.memory_enabled = b.get("memory_enabled", cfg.brain.memory_enabled)
+
+        if "shield" in raw:
+            s = raw["shield"]
+            cfg.shield.enabled = s.get("enabled", cfg.shield.enabled)
+            cfg.shield.mode = s.get("mode", cfg.shield.mode)
+            cfg.shield.interface = s.get("interface", cfg.shield.interface)
+            cfg.shield.mirror_interface = s.get("mirror_interface", cfg.shield.mirror_interface)
+            cfg.shield.decrypt_tls = s.get("decrypt_tls", cfg.shield.decrypt_tls)
+            cfg.shield.waf_enabled = s.get("waf_enabled", cfg.shield.waf_enabled)
+            cfg.shield.av_enabled = s.get("av_enabled", cfg.shield.av_enabled)
+            cfg.shield.parental_enabled = s.get("parental_enabled", cfg.shield.parental_enabled)
+            cfg.shield.block_mode = s.get("block_mode", cfg.shield.block_mode)
+
+        if "mobile" in raw:
+            m = raw["mobile"]
+            cfg.mobile.enabled = m.get("enabled", cfg.mobile.enabled)
+            cfg.mobile.pairing_ttl_seconds = m.get("pairing_ttl_seconds", cfg.mobile.pairing_ttl_seconds)
+            cfg.mobile.sync_enabled = m.get("sync_enabled", cfg.mobile.sync_enabled)
+
+        if "syslog_forwarding" in raw:
+            sf = raw["syslog_forwarding"]
+            cfg.syslog_forwarding.enabled = sf.get("enabled", cfg.syslog_forwarding.enabled)
+            cfg.syslog_forwarding.forward_from_port = int(sf.get("forward_from_port", cfg.syslog_forwarding.forward_from_port))
+            cfg.syslog_forwarding.forward_to_port = int(sf.get("forward_to_port", cfg.syslog_forwarding.forward_to_port))
+            cfg.syslog_forwarding.wef_enabled = sf.get("wef_enabled", cfg.syslog_forwarding.wef_enabled)
+            cfg.syslog_forwarding.tls_enabled = sf.get("tls_enabled", cfg.syslog_forwarding.tls_enabled)
+            cfg.syslog_forwarding.tls_verify = sf.get("tls_verify", cfg.syslog_forwarding.tls_verify)
+            cfg.syslog_forwarding.protocol = sf.get("protocol", cfg.syslog_forwarding.protocol)
+
+        if "tenant" in raw:
+            t = raw["tenant"]
+            cfg.tenant.enabled = t.get("enabled", cfg.tenant.enabled)
+            cfg.tenant.default_tenant_id = t.get("default_tenant_id", cfg.tenant.default_tenant_id)
 
         return cfg
 

@@ -92,6 +92,25 @@
             <div class="font-mono text-[10px] text-zinc-400">MAC: {{ d.mac }}</div>
             {% endif %}
 
+            <!-- Traffic stats + monitoring toggle -->
+            <div class="flex items-center justify-between text-[10px] bg-zinc-950 rounded-xl px-3 py-2 border border-zinc-800">
+                <div class="text-zinc-400">
+                    {% if d.bytes_in or d.bytes_out %}
+                    <span class="text-sky-400">↓{{ ((d.bytes_in or 0) / 1024)|round(1) }}KB</span>
+                    <span class="mx-1">·</span>
+                    <span class="text-amber-400">↑{{ ((d.bytes_out or 0) / 1024)|round(1) }}KB</span>
+                    {% else %}
+                    <span class="text-zinc-500">No traffic stats yet</span>
+                    {% endif %}
+                </div>
+                <label class="flex items-center gap-1.5 cursor-pointer" onclick="event.stopPropagation()">
+                    <span class="text-zinc-500">Monitor</span>
+                    <input type="checkbox" class="accent-emerald-500"
+                           {% if d.monitoring_enabled is not defined or d.monitoring_enabled %}checked{% endif %}
+                           onchange="toggleMonitoring('{{ d.ip }}', this.checked)">
+                </label>
+            </div>
+
             <!-- Ports summary (new feature highlight) -->
             <div class="text-[10px] text-zinc-400">
                 {% set obs = d.observed_ports or d.normal_behaviors %}
@@ -177,6 +196,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const allBtn = document.querySelector('#category-filters button[data-filter="all"]');
     if (allBtn) allBtn.classList.add('bg-emerald-700', 'text-white');
 });
+
+async function toggleMonitoring(ip, enabled) {
+    await fetch('/api/devices/' + encodeURIComponent(ip) + '/monitoring', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled})
+    });
+}
 
 async function learnAllBaselines() {
     if (!confirm('Scan recent threats and learn normal behavior baselines for every device seen in the last 7 days? This may take a moment.')) return;

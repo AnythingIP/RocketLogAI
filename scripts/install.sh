@@ -4,8 +4,8 @@
 
 set -e
 
-echo "🚀 RocketLogAI Installer"
-echo "========================"
+echo "🚀 RocketLogAI v2.0 Installer"
+echo "=============================="
 
 # Determine where this script lives (source of truth for files to copy)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -87,15 +87,44 @@ pip install --upgrade pip setuptools wheel
 
 cd "$INSTALL_DIR"
 
-# Install the package with web extras + any requirements.txt as belt-and-suspenders
-pip install ".[web]"
+# Install the package with web + v2 extras
+pip install ".[web,v2,ai]" || pip install ".[web]"
 if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt
 fi
 
-# Phase 3/4: Install Open Interpreter (for powerful AI Assistant / conversational operator) + cryptography (for encrypted service account / Entra secrets in advanced auth)
-echo "Installing optional AI + security extras (open-interpreter + cryptography)..."
-pip install open-interpreter cryptography 2>/dev/null || pip install --no-deps open-interpreter cryptography || true
+# Open Interpreter with conflict-safe install (Rust not required for core; OI installed with --no-deps fallback)
+echo "Installing AI Assistant extras (open-interpreter + cryptography)..."
+if ! pip install "open-interpreter>=0.2.0" cryptography 2>/dev/null; then
+    echo "Full open-interpreter install failed; trying minimal install..."
+    pip install --no-deps open-interpreter cryptography 2>/dev/null || true
+fi
+
+# systemd service generation (Linux only)
+if [ -d /etc/systemd/system ] && [ "$(uname -s)" = "Linux" ]; then
+    SERVICE_FILE="/etc/systemd/system/rocketlogai.service"
+    if [ ! -f "$SERVICE_FILE" ]; then
+        echo "Generating systemd service template at $INSTALL_DIR/rocketlogai.service ..."
+        cat > "$INSTALL_DIR/rocketlogai.service" << EOFSVC
+[Unit]
+Description=RocketLogAI v2 Syslog Security Platform
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/.venv/bin/logsentinel run --web
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+EOFSVC
+        echo "To enable: sudo cp $INSTALL_DIR/rocketlogai.service $SERVICE_FILE && sudo systemctl enable --now rocketlogai"
+    fi
+fi
 
 # One more safety pass for common web + security deps
 pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode rich click pyyaml openai geoip2 requests ldap3 python-multipart cryptography 2>/dev/null || true
@@ -125,12 +154,14 @@ echo "  3. Edit config.yaml (especially the llm: section for your model or Micro
 echo "  4. ./start-rocketlogai.sh"
 echo "  5. Open the web UI and change the default admin/admin password immediately"
 echo
-echo "New in this build (Phases 1-4):"
-echo "  - Powerful AI Assistant (Open Interpreter backend) - natural English commands like 'deploy Wireshark to these machines' or 'create PowerPoint from today's threats' with safety plans + confirmation."
-echo "  - Advanced Auth & RBAC: Full AD/LDAP (service account + groups), Entra ID, roles (Viewer/Analyst/Operator/Admin) mapped from groups."
-echo "  - Encrypted storage for service/Entra secrets, improved domain test, RBAC enforcement."
-echo "  - Daily Briefing, better devices, sidebar, etc. from earlier phases."
-echo "Install extras with: pip install -e '.[web,ai]' after setup."
+echo "RocketLogAI v2.0 includes:"
+echo "  - Unified AI Brain (MCP server, vector DB/RAG, conversation memory)"
+echo "  - RocketRemediate (dry-run, approval, backup, rollback)"
+echo "  - RocketShield (WAF + AV on decrypted traffic, parental controls)"
+echo "  - RocketAI Mobile API (QR pairing, local-first sync)"
+echo "  - UEBA anomaly detection, full audit logging, Prometheus metrics"
+echo "  - Organization tasks, per-section config saves, Helm chart"
+echo "Install full extras: pip install -e '.[web,ai,v2]'"
 echo
 echo "To run as a systemd service later, see the notes in INSTALL.md"
 echo

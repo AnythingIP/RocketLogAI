@@ -506,6 +506,59 @@ class Storage:
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_daily_briefing_messages_briefing ON daily_briefing_messages(briefing_id, ts)")
 
+            # v2: Organization tasks (dashboard acknowledgment, assignment, remediation)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS org_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    severity TEXT DEFAULT 'medium',
+                    status TEXT DEFAULT 'open',
+                    source TEXT DEFAULT 'manual',
+                    threat_id INTEGER,
+                    assigned_to TEXT,
+                    created_by TEXT,
+                    acknowledged_by TEXT,
+                    notes TEXT,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_org_tasks_status ON org_tasks(status)")
+
+            # v2: Device monitoring toggle + traffic stats
+            try:
+                cur.execute("ALTER TABLE known_devices ADD COLUMN monitoring_enabled INTEGER DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cur.execute("ALTER TABLE known_devices ADD COLUMN bytes_in INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cur.execute("ALTER TABLE known_devices ADD COLUMN bytes_out INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cur.execute("ALTER TABLE known_devices ADD COLUMN packets_in INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                cur.execute("ALTER TABLE known_devices ADD COLUMN packets_out INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+
+            # v2: User preferences (last briefing, config UI state)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    user_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT,
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (user_id, key)
+                )
+            """)
+
     def insert_log(self, record: dict[str, Any]) -> int:
         with self._cursor() as cur:
             cur.execute("""
@@ -2849,3 +2902,104 @@ Avoid rare/debug ports. Focus on what makes this vendor's devices recognizable (
                             pass
                 return b
             return None
+
+    # --- v2: Organization tasks ---
+
+    def create_org_task(
+        self,
+        title: str,
+        description: str = "",
+        severity: str = "medium",
+        source: str = "manual",
+        created_by: str = "",
+        threat_id: int | None = None,
+    ) -> int:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO org_tasks (title, description, severity, source, threat_id, created_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (title, description, severity, source, threat_id, created_by),
+            )
+            return cur.lastrowid
+
+    def list_org_tasks(self, status: str = "", limit: int = 50) -> list[dict[str, Any]]:
+        with self._cursor() as cur:
+            if status:
+                cur.execute(
+                    "SELECT * FROM org_tasks WHERE status = ? ORDER BY updated_at DESC LIMIT ?",
+                    (status, limit),
+                )
+            else:
+                cur.execute("SELECT * FROM org_tasks ORDER BY updated_at DESC LIMIT ?", (limit,))
+            return [dict(r) for r in cur.fetchall()]
+
+    def update_org_task(
+        self,
+        task_id: int,
+        status: str = "",
+        assigned_to: str = "",
+        notes: str = "",
+        actor: str = "",
+    ) -> bool:
+        with self._cursor() as cur:
+            cur.execute("SELECT id FROM org_tasks WHERE id = ?", (task_id,))
+            if not cur.fetchone():
+                return False
+            updates = ["updated_at = datetime('now')"]
+            params: list[Any] = []
+            if status:
+                updates.append("status = ?")
+                params.append(status)
+                if status == "acknowledged":
+                    updates.append("acknowledged_by = ?")
+                    params.append(actor)
+            if assigned_to:
+                updates.append("assigned_to = ?")
+                params.append(assigned_to)
+            if notes:
+                updates.append("notes = ?")
+                params.append(notes)
+            params.append(task_id)
+            cur.execute(f"UPDATE org_tasks SET {', '.join(updates)} WHERE id = ?", params)
+            return True
+
+    # --- v2: User preferences (persist after logout) ---
+
+    def set_user_preference(self, user_id: str, key: str, value: str) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT OR REPLACE INTO user_preferences (user_id, key, value, updated_at)
+                VALUES (?, ?, ?, datetime('now'))
+                """,
+                (user_id, key, value),
+            )
+
+    def get_user_preference(self, user_id: str, key: str, default: str = "") -> str:
+        with self._cursor() as cur:
+            cur.execute("SELECT value FROM user_preferences WHERE user_id = ? AND key = ?", (user_id, key))
+            row = cur.fetchone()
+            return row["value"] if row else default
+
+    # --- v2: Device monitoring toggle + traffic ---
+
+    def set_device_monitoring(self, ip: str, enabled: bool) -> bool:
+        with self._cursor() as cur:
+            cur.execute("UPDATE known_devices SET monitoring_enabled = ? WHERE ip = ?", (1 if enabled else 0, ip))
+            return cur.rowcount > 0
+
+    def update_device_traffic(self, ip: str, bytes_in: int = 0, bytes_out: int = 0, packets_in: int = 0, packets_out: int = 0) -> None:
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                UPDATE known_devices SET
+                    bytes_in = COALESCE(bytes_in, 0) + ?,
+                    bytes_out = COALESCE(bytes_out, 0) + ?,
+                    packets_in = COALESCE(packets_in, 0) + ?,
+                    packets_out = COALESCE(packets_out, 0) + ?
+                WHERE ip = ?
+                """,
+                (bytes_in, bytes_out, packets_in, packets_out, ip),
+            )
