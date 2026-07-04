@@ -16,7 +16,7 @@ def build_default_tools(storage: Any = None, brain: Any = None) -> list[dict[str
         logs = storage.get_recent_logs(limit=limit) if hasattr(storage, "get_recent_logs") else []
         if query:
             q = query.lower()
-            logs = [l for l in logs if q in (l.get("message") or "").lower()]
+            logs = [entry for entry in logs if q in (entry.get("message") or "").lower()]
         return {"count": len(logs), "logs": logs[:limit]}
 
     async def list_threats(status: str = "open", limit: int = 20, **_: Any) -> dict[str, Any]:
