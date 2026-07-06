@@ -178,8 +178,11 @@ Windows (PowerShell):
 The upgrade script:
 - Auto-detects **native** vs **Docker** (won't mistake a native install just because `docker-compose.yml` exists)
 - Copies updated `logsentinel/`, `templates/`, `scripts/`, and v2 modules
-- Creates a `.venv` if missing and installs `pip install -e ".[web,v2,ai]"`
+- Creates a `.venv` if missing (prefers Python 3.12 via `py -3.12` when available)
+- Installs core `pip install -e ".[web,v2]"` (required), then tries `open-interpreter` (optional)
 - Preserves your `config.yaml` and `data/` (including the database)
+
+**Python version:** Core RocketLogAI v2 works on Python 3.10–3.13. The optional **AI Operator** (`open-interpreter`) requires **Python 3.10–3.12** on Windows (Python 3.13 fails to build `tiktoken`). If you only have 3.13, the upgrade still completes — syslog, dashboard, remediation, and shield all work; only the Open Interpreter backend is skipped.
 
 **Health check / repair** (run anytime):
 ```bash

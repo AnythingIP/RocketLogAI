@@ -41,7 +41,18 @@ if (-not $pythonCmd) {
 Write-Host "Found Python at: $pythonCmd" -ForegroundColor Green
 
 Write-Host "`n[2/5] Creating virtual environment..." -ForegroundColor Yellow
-python -m venv "$InstallDir\.venv"
+$pyLauncher = @("python")
+if (Get-Command py -ErrorAction SilentlyContinue) {
+    foreach ($tag in @("-3.12", "-3.11", "-3.10")) {
+        & py $tag -c "import sys" 1>$null 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $pyLauncher = @("py", $tag)
+            Write-Host ("Using Python via py " + $tag) -ForegroundColor Green
+            break
+        }
+    }
+}
+& @pyLauncher -m venv "$InstallDir\.venv"
 . "$InstallDir\.venv\Scripts\Activate.ps1"
 
 Write-Host "`n[3/5] Copying RocketLogAI files..." -ForegroundColor Yellow
@@ -55,10 +66,18 @@ robocopy "$SourceRoot\scripts" "$InstallDir\scripts" /E /NFL /NDL /NJH /NJS | Ou
 Write-Host "`n[4/5] Installing dependencies..." -ForegroundColor Yellow
 pip install --upgrade pip setuptools wheel
 Set-Location $InstallDir
-pip install ".[web,v2,ai]"
+pip install ".[web,v2]"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Core install failed." -ForegroundColor Red
+    exit 1
+}
 
-Write-Host "`n[4.5/5] Installing Phase 3/4 AI + Auth extras (open-interpreter for conversational operator, cryptography for encrypted secrets)..." -ForegroundColor Yellow
-pip install open-interpreter cryptography
+Write-Host "`n[4.5/5] Installing optional AI Operator (open-interpreter)..." -ForegroundColor Yellow
+pip install open-interpreter
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARNING: open-interpreter skipped (common on Python 3.13+)." -ForegroundColor Yellow
+    Write-Host "  RocketLogAI core v2 is installed. Use Python 3.10-3.12 for full AI Operator." -ForegroundColor Yellow
+}
 
 "native" | Out-File -Encoding ascii -FilePath "$InstallDir\.install-type" -Force
 

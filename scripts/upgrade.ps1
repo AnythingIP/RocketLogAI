@@ -136,21 +136,79 @@ function Stop-RocketLogAIProcesses {
     }
 }
 
+function Get-PythonForVenv {
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        foreach ($tag in @("-3.12", "-3.11", "-3.10")) {
+            & py $tag -c "import sys" 1>$null 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $ver = & py $tag -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))"
+                Write-Host ("Using Python " + $ver.Trim() + " (py " + $tag + ")") -ForegroundColor Green
+                return @("py", $tag)
+            }
+        }
+    }
+
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+        $ver = (& python -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))").Trim()
+        if ($ver -match "^3\.(1[3-9]|[2-9][0-9])") {
+            Write-Host "WARNING: Python $ver detected." -ForegroundColor Yellow
+            Write-Host "  Core RocketLogAI will install. AI Operator (open-interpreter) needs Python 3.10-3.12." -ForegroundColor Yellow
+            Write-Host "  Install Python 3.12 from python.org, then delete .venv and rerun upgrade." -ForegroundColor Yellow
+        }
+        return @("python")
+    }
+
+    throw "Python 3.10+ not found. Install from https://www.python.org/downloads/windows/"
+}
+
+function Get-VenvPythonVersion {
+    param([string]$PythonExe)
+    if (-not (Test-Path $PythonExe)) { return $null }
+    return (& $PythonExe -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))").Trim()
+}
+
 function Ensure-Venv {
     param([string]$Dir)
 
     $venv = Join-Path $Dir ".venv"
     $pythonExe = Join-Path $venv "Scripts\python.exe"
     if (Test-Path $pythonExe) {
+        $ver = Get-VenvPythonVersion -PythonExe $pythonExe
+        if ($ver -match "^3\.(1[3-9]|[2-9][0-9])") {
+            Write-Host ("Existing .venv uses Python " + $ver + " - AI Operator extras may fail to install.") -ForegroundColor Yellow
+            Write-Host "  To use Python 3.12 instead: Remove-Item -Recurse -Force '" + $venv + "' then rerun upgrade." -ForegroundColor Yellow
+        }
         return $venv
     }
 
     Write-Host "No .venv found - creating one (recommended for upgrades)..." -ForegroundColor Yellow
-    & python -m venv $venv
+    $pyCmd = Get-PythonForVenv
+    & @pyCmd -m venv $venv
     if (-not (Test-Path $pythonExe)) {
         throw ("Failed to create virtual environment at " + $venv)
     }
     return $venv
+}
+
+function Install-PythonDependencies {
+    param([string]$PythonExe, [string]$Dir)
+
+    Write-Host "Installing core RocketLogAI packages [web,v2]..." -ForegroundColor Yellow
+    & $PythonExe -m pip install -e '.[web,v2]' --upgrade
+    if ($LASTEXITCODE -ne 0) {
+        throw "pip install -e .[web,v2] failed"
+    }
+
+    Write-Host "Installing optional AI Operator extras (open-interpreter)..." -ForegroundColor Yellow
+    & $PythonExe -m pip install open-interpreter --upgrade
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: open-interpreter could not be installed (common on Python 3.13+)." -ForegroundColor Yellow
+        Write-Host "  RocketLogAI core v2 is installed and will run normally." -ForegroundColor Yellow
+        Write-Host "  For full conversational AI Operator, use Python 3.10-3.12 in .venv." -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "AI Operator extras installed." -ForegroundColor Green
+    }
 }
 
 function Write-LauncherScripts {
@@ -171,7 +229,7 @@ function Install-NativePackage {
     $venv = Ensure-Venv -Dir $Dir
     $python = Join-Path $venv "Scripts\python.exe"
 
-    Write-Host "Upgrading pip and installing RocketLogAI v2 extras..." -ForegroundColor Yellow
+    Write-Host "Upgrading pip..." -ForegroundColor Yellow
     & $python -m pip install --upgrade pip setuptools wheel
     if ($LASTEXITCODE -ne 0) {
         throw "pip bootstrap failed"
@@ -179,12 +237,7 @@ function Install-NativePackage {
 
     Push-Location $Dir
     try {
-        & $python -m pip install -e '.[web,v2,ai]' --upgrade
-        if ($LASTEXITCODE -ne 0) {
-            throw "pip install -e .[web,v2,ai] failed"
-        }
-
-        & $python -m pip install open-interpreter cryptography --upgrade 1>$null 2>$null
+        Install-PythonDependencies -PythonExe $python -Dir $Dir
     }
     finally {
         Pop-Location

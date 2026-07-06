@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 EXPECTED_VERSION = "2.0.0"
-PIP_EXTRAS = "web,v2,ai"
+PIP_CORE_EXTRAS = "web,v2"
 REQUIRED_IMPORTS = [
     "fastapi",
     "uvicorn",
@@ -116,18 +116,20 @@ def pip_install_editable(install_dir: Path, python_exe: Path) -> bool:
         return False
 
     proc = _run(
-        [str(python_exe), "-m", "pip", "install", "-e", f".[{PIP_EXTRAS}]", "--upgrade"],
+        [str(python_exe), "-m", "pip", "install", "-e", f".[{PIP_CORE_EXTRAS}]", "--upgrade"],
         cwd=install_dir,
     )
     if proc.returncode != 0:
         _fail(f"editable install failed: {proc.stderr.strip()}")
         return False
 
-    # Belt-and-suspenders for AI extras (open-interpreter can conflict on some systems)
-    _run(
-        [str(python_exe), "-m", "pip", "install", "open-interpreter", "cryptography", "--upgrade"],
+    # Optional AI Operator — fails on Python 3.13+ when tiktoken cannot build
+    ai_proc = _run(
+        [str(python_exe), "-m", "pip", "install", "open-interpreter", "--upgrade"],
         cwd=install_dir,
     )
+    if ai_proc.returncode != 0:
+        _warn("open-interpreter skipped (use Python 3.10-3.12 for full AI Operator)")
     return True
 
 
@@ -337,7 +339,7 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
         if install_type == "native":
             clean_pycache(install_dir)
             if pip_install_editable(install_dir, runtime):
-                _ok("Reinstalled editable package with [web,v2,ai] extras")
+                _ok("Reinstalled editable package with [web,v2] extras")
                 write_launchers(install_dir)
                 _ok("Updated launcher scripts")
                 (install_dir / ".install-type").write_text("native\n", encoding="utf-8")

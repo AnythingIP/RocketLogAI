@@ -129,8 +129,13 @@ install_native_package() {
     source "$dir/.venv/bin/activate"
     pip install --upgrade pip setuptools wheel
     cd "$dir"
-    pip install -e ".[web,v2,ai]" --upgrade
-    pip install open-interpreter cryptography --upgrade 2>/dev/null || true
+    echo "Installing core RocketLogAI packages [web,v2]..."
+    pip install -e ".[web,v2]" --upgrade
+    echo "Installing optional AI Operator extras (open-interpreter)..."
+    if ! pip install open-interpreter --upgrade 2>/dev/null; then
+        echo "WARNING: open-interpreter skipped (common on Python 3.13+)."
+        echo "  RocketLogAI core v2 is installed. Use Python 3.10-3.12 for full AI Operator."
+    fi
     echo "native" > "$dir/.install-type"
     cat > "$dir/start-rocketlogai.sh" << 'EOF'
 #!/usr/bin/env bash
