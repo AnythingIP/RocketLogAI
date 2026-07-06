@@ -18,9 +18,9 @@ def _get_runtime():
     return get_v2_runtime(_cfg, _storage)
 
 
-async def _require_login(request: Request):
+def _require_login(request: Request):
     from .web import require_login
-    return await require_login(request)
+    return require_login(request)
 
 
 class RemediateRequest(BaseModel):
