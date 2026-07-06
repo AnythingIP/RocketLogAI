@@ -333,9 +333,35 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
             _fail("Docker not running (start Docker Desktop or docker service)")
             issues.append("docker:down")
 
+    print()
+    print("[7] Install folder hygiene")
+    cleanup_script = install_dir / "scripts" / "rla_cleanup.py"
+    if not cleanup_script.is_file():
+        cleanup_script = Path(__file__).resolve().parent / "rla_cleanup.py"
+    junk_markers = (
+        "RocketLogAI_Ver1.0",
+        ".git",
+        "dist",
+        "errors.txt",
+    )
+    junk_found = [name for name in junk_markers if (install_dir / name).exists()]
+    if junk_found:
+        _warn("Junk/legacy paths found: " + ", ".join(junk_found))
+        issues.append("cleanup:junk")
+    else:
+        _ok("No common junk paths at install root")
+
     if fix and issues:
         print()
         print("[FIX] Attempting repairs...")
+        if cleanup_script.is_file():
+            proc = _run(
+                [str(find_python()), str(cleanup_script), str(install_dir), "--fix"],
+                cwd=install_dir,
+            )
+            if proc.returncode == 0:
+                _ok("Install folder cleaned")
+                issues = [i for i in issues if i != "cleanup:junk"]
         if install_type == "native":
             clean_pycache(install_dir)
             if pip_install_editable(install_dir, runtime):

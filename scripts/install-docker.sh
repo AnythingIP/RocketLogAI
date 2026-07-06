@@ -45,6 +45,11 @@ if [ ! -f "$INSTALL_DIR/config.yaml" ]; then
 fi
 echo "docker" > "$INSTALL_DIR/.install-type"
 
+if [ -f "$SOURCE_ROOT/scripts/rla_cleanup.py" ]; then
+    echo "Cleaning install folder..."
+    python3 "$SOURCE_ROOT/scripts/rla_cleanup.py" "$INSTALL_DIR" --source "$SOURCE_ROOT" --fix
+fi
+
 echo ""
 echo "[2/5] Backing up any existing data (if present)..."
 python3 "$SOURCE_ROOT/scripts/rla_backup.py" "$INSTALL_DIR" --label pre-docker 2>/dev/null || true

@@ -94,7 +94,14 @@ Set-Location `$PSScriptRoot
 logsentinel run --web
 "@ | Out-File -Encoding UTF8 -FilePath "$InstallDir\start-rocketlogai.ps1"
 
-Write-Host "`n[6/6] Done!" -ForegroundColor Green
+Write-Host "`n[6/6] Cleaning install folder..." -ForegroundColor Yellow
+$cleanupPy = Join-Path $ScriptDir "rla_cleanup.py"
+if (Test-Path $cleanupPy) {
+    & @runner $cleanupPy $InstallDir --source $SourceRoot --fix
+}
+
+Write-Host ""
+Write-Host "Done!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Tip: Run .\scripts\setup.ps1 anytime for install, upgrade, Docker, or repair." -ForegroundColor Cyan
 Write-Host ""

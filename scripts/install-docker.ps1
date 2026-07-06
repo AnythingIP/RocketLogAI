@@ -66,6 +66,13 @@ if (-not (Test-Path $configPath)) {
 
 Set-Content -Path (Join-Path $InstallDir ".install-type") -Value "docker" -Encoding ASCII
 
+$cleanupPy = Join-Path $SourceRoot "scripts\rla_cleanup.py"
+if (Test-Path $cleanupPy) {
+    Write-Host "Cleaning install folder..." -ForegroundColor Yellow
+    $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+    & $py $cleanupPy $InstallDir --source $SourceRoot --fix
+}
+
 Write-Host ""
 Write-Host "[2/5] Backing up any existing data (if present)..." -ForegroundColor Yellow
 $backupPy = Join-Path $SourceRoot "scripts\rla_backup.py"

@@ -169,6 +169,25 @@ function Invoke-SelectPython {
     return ,$info.command
 }
 
+function Invoke-InstallCleanup {
+    param([string]$Dir)
+
+    $cleanupPy = Join-Path $SourceRoot "scripts\rla_cleanup.py"
+    if (-not (Test-Path $cleanupPy)) {
+        Write-Host "WARNING: cleanup script not found, skipping." -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host "Cleaning install folder (remove junk, sync official layout)..." -ForegroundColor Yellow
+    $runner = Get-RunnerPython
+    if ($runner -is [array]) {
+        & @runner $cleanupPy $Dir --source $SourceRoot --fix
+    }
+    else {
+        & $runner $cleanupPy $Dir --source $SourceRoot --fix
+    }
+}
+
 function Invoke-InstallBackup {
     param([string]$Dir)
 
@@ -380,6 +399,7 @@ if ($InstallType -eq "docker") {
         Write-Host ""
         Write-Host "[2/4] Copying updated files..." -ForegroundColor Yellow
         Copy-UpgradeFiles -Dest $TargetDir -Source $SourceRoot
+        Invoke-InstallCleanup -Dir $TargetDir
         Set-Content -Path (Join-Path $TargetDir ".install-type") -Value "docker" -Encoding ASCII
 
         Write-Host ""
@@ -414,6 +434,7 @@ else {
     Write-Host ""
     Write-Host "[2/5] Copying updated code..." -ForegroundColor Yellow
     Copy-UpgradeFiles -Dest $TargetDir -Source $SourceRoot
+    Invoke-InstallCleanup -Dir $TargetDir
 
     Write-Host ""
     Write-Host "[3/5] Installing/upgrading Python package in .venv..." -ForegroundColor Yellow

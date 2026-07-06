@@ -29,6 +29,13 @@ The wizard asks: **native Python**, **Docker**, **upgrade**, **health check**, o
 
 **Python version:** Native installs default to **Python 3.12** when available (full AI Operator). Docker always uses Python 3.12 inside the image.
 
+**Install folder hygiene:** Install and upgrade automatically remove junk (old `RocketLogAI_Ver1.0/` bundles, `.git/`, screenshots, duplicate DBs at root, stale code) and sync `logsentinel/` with the current release. Manual dry-run:
+
+```bash
+python scripts/rla_cleanup.py /path/to/install --source /path/to/RocketLogAI --dry-run
+python scripts/rla_cleanup.py /path/to/install --source /path/to/RocketLogAI --fix
+```
+
 ---
 
 ## 1. Easiest: Docker (one-click)

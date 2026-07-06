@@ -103,6 +103,15 @@ detect_install_type() {
     echo "native"
 }
 
+run_install_cleanup() {
+    local dir="$1"
+    local cleanup="$SOURCE_ROOT/scripts/rla_cleanup.py"
+    if [ -f "$cleanup" ]; then
+        echo "Cleaning install folder (remove junk, sync official layout)..."
+        python3 "$cleanup" "$dir" --source "$SOURCE_ROOT" --fix
+    fi
+}
+
 copy_upgrade_files() {
     local dest="$1"
     for d in logsentinel templates scripts helm tests; do
@@ -211,6 +220,7 @@ if [ "$INSTALL_TYPE" = "docker" ]; then
     echo
     echo "[2/3] Copying updated files..."
     copy_upgrade_files "$TARGET_DIR"
+    run_install_cleanup "$TARGET_DIR"
     echo "docker" > "$TARGET_DIR/.install-type"
 
     echo
@@ -231,6 +241,7 @@ else
     echo
     echo "[2/4] Copying updated code..."
     copy_upgrade_files "$TARGET_DIR"
+    run_install_cleanup "$TARGET_DIR"
 
     echo
     echo "[3/4] Installing/upgrading Python package..."

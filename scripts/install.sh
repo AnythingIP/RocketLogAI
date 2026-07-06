@@ -159,7 +159,13 @@ EOF
 chmod +x "$INSTALL_DIR/start-rocketlogai.sh"
 
 echo
-echo "[6/6] Done!"
+echo "[6/6] Cleaning install folder..."
+if [ -f "$SOURCE_ROOT/scripts/rla_cleanup.py" ]; then
+    python3 "$SOURCE_ROOT/scripts/rla_cleanup.py" "$INSTALL_DIR" --source "$SOURCE_ROOT" --fix
+fi
+
+echo ""
+echo "Done!"
 echo "Tip: Run ./scripts/setup.sh anytime for install, upgrade, Docker, or repair."
 echo ""
 echo "Installation complete!"
