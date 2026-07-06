@@ -11,6 +11,8 @@ set -euo pipefail
 SHOW_HELP=false
 INSTALL_TYPE=""
 FIX=false
+SKIP_BACKUP=false
+RECREATE_VENV=false
 TARGET_DIR=""
 
 for arg in "$@"; do
@@ -19,6 +21,8 @@ for arg in "$@"; do
         --native) INSTALL_TYPE="native" ;;
         --docker) INSTALL_TYPE="docker" ;;
         --fix) FIX=true ;;
+        --skip-backup) SKIP_BACKUP=true ;;
+        --recreate-venv) RECREATE_VENV=true ;;
         *) TARGET_DIR="$arg" ;;
     esac
 done
@@ -113,13 +117,46 @@ copy_upgrade_files() {
     find "$dest" -name '*.pyc' -delete 2>/dev/null || true
 }
 
+select_python_cmd() {
+    local selector="$SOURCE_ROOT/scripts/rla_python.py"
+    if [ ! -f "$selector" ]; then
+        echo "ERROR: missing scripts/rla_python.py"
+        exit 1
+    fi
+    local json
+    json="$(python3 "$selector")"
+    PYTHON_LAUNCHER=()
+    while IFS= read -r line; do
+        [ -n "$line" ] && PYTHON_LAUNCHER+=("$line")
+    done < <(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print('\n'.join(d['command']))" "$json")
+    echo "Selected Python $(python3 -c "import json,sys; print(json.loads(sys.argv[1])['version'])" "$json")"
+}
+
 ensure_venv() {
     local dir="$1"
+    local selector="$SOURCE_ROOT/scripts/rla_python.py"
     if [ -d "$dir/.venv/bin" ]; then
-        return 0
+        local ver
+        ver="$("$dir/.venv/bin/python" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")')"
+        if [[ "$ver" == 3.1[3-9]* ]] || [ "$RECREATE_VENV" = true ]; then
+            if python3 "$selector" --has 3.12 >/dev/null 2>&1; then
+                local ans="Y"
+                if [ "$RECREATE_VENV" != true ]; then
+                    read -r -p "Recreate .venv with Python 3.12 (recommended)? [Y/n] " ans
+                fi
+                if [ -z "$ans" ] || [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+                    rm -rf "$dir/.venv"
+                else
+                    return 0
+                fi
+            fi
+        else
+            return 0
+        fi
     fi
-    echo "No .venv found — creating one..."
-    python3 -m venv "$dir/.venv"
+    echo "Creating .venv (default: Python 3.12 if installed)..."
+    select_python_cmd
+    "${PYTHON_LAUNCHER[@]}" -m venv "$dir/.venv"
 }
 
 install_native_package() {
@@ -153,6 +190,12 @@ if [ -z "$INSTALL_TYPE" ]; then
 fi
 
 echo "[detected] Install type: $INSTALL_TYPE"
+
+if [ "$SKIP_BACKUP" != true ]; then
+    echo
+    echo "[0] Backing up config and data..."
+    python3 "$SOURCE_ROOT/scripts/rla_backup.py" "$TARGET_DIR" 2>/dev/null || true
+fi
 
 if [ "$INSTALL_TYPE" = "docker" ]; then
     if ! docker_daemon_ok; then

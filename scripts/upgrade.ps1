@@ -11,7 +11,9 @@ param(
     [ValidateSet("", "native", "docker")]
     [string]$InstallType = "",
     [switch]$Help,
-    [switch]$Fix
+    [switch]$Fix,
+    [switch]$SkipBackup,
+    [switch]$RecreateVenv
 )
 
 $ErrorActionPreference = "Stop"
@@ -136,29 +138,52 @@ function Stop-RocketLogAIProcesses {
     }
 }
 
-function Get-PythonForVenv {
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        foreach ($tag in @("-3.12", "-3.11", "-3.10")) {
-            & py $tag -c "import sys" 1>$null 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                $ver = & py $tag -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))"
-                Write-Host ("Using Python " + $ver.Trim() + " (py " + $tag + ")") -ForegroundColor Green
-                return @("py", $tag)
-            }
-        }
+function Get-RunnerPython {
+    if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
+    if (Get-Command py -ErrorAction SilentlyContinue) { return @("py", "-3.12") }
+    throw "Python not found — install Python 3.12 from https://www.python.org/downloads/windows/"
+}
+
+function Invoke-SelectPython {
+    param([switch]$Ask)
+
+    $selector = Join-Path $SourceRoot "scripts\rla_python.py"
+    if (-not (Test-Path $selector)) {
+        throw "Missing scripts\rla_python.py"
     }
 
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        $ver = (& python -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))").Trim()
-        if ($ver -match "^3\.(1[3-9]|[2-9][0-9])") {
-            Write-Host "WARNING: Python $ver detected." -ForegroundColor Yellow
-            Write-Host "  Core RocketLogAI will install. AI Operator (open-interpreter) needs Python 3.10-3.12." -ForegroundColor Yellow
-            Write-Host "  Install Python 3.12 from python.org, then delete .venv and rerun upgrade." -ForegroundColor Yellow
-        }
-        return @("python")
+    $runner = Get-RunnerPython
+    $args = @($selector)
+    if ($Ask) { $args += "--ask" }
+
+    $json = if ($runner -is [array]) { & @runner @args } else { & $runner @args }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not find Python 3.10+. Install Python 3.12 from python.org"
     }
 
-    throw "Python 3.10+ not found. Install from https://www.python.org/downloads/windows/"
+    $info = $json | ConvertFrom-Json
+    Write-Host ("Selected Python " + $info.version + " (" + ($info.command -join " ") + ")") -ForegroundColor Green
+    if (-not $info.ai_operator_full) {
+        Write-Host "  Note: AI Operator may be limited on this Python version." -ForegroundColor Yellow
+    }
+    return ,$info.command
+}
+
+function Invoke-InstallBackup {
+    param([string]$Dir)
+
+    $backupPy = Join-Path $SourceRoot "scripts\rla_backup.py"
+    if (-not (Test-Path $backupPy)) {
+        Write-Host "WARNING: backup script not found, skipping backup." -ForegroundColor Yellow
+        return
+    }
+    $runner = Get-RunnerPython
+    if ($runner -is [array]) {
+        & @runner $backupPy $Dir
+    }
+    else {
+        & $runner $backupPy $Dir
+    }
 }
 
 function Get-VenvPythonVersion {
@@ -172,17 +197,47 @@ function Ensure-Venv {
 
     $venv = Join-Path $Dir ".venv"
     $pythonExe = Join-Path $venv "Scripts\python.exe"
+
     if (Test-Path $pythonExe) {
         $ver = Get-VenvPythonVersion -PythonExe $pythonExe
-        if ($ver -match "^3\.(1[3-9]|[2-9][0-9])") {
-            Write-Host ("Existing .venv uses Python " + $ver + " - AI Operator extras may fail to install.") -ForegroundColor Yellow
-            Write-Host "  To use Python 3.12 instead: Remove-Item -Recurse -Force '" + $venv + "' then rerun upgrade." -ForegroundColor Yellow
+        $needsRecreate = $RecreateVenv -or ($ver -match "^3\.(1[3-9]|[2-9][0-9])")
+
+        if ($needsRecreate) {
+            $selector = Join-Path $SourceRoot "scripts\rla_python.py"
+            $runner = Get-RunnerPython
+            $has312 = $false
+            if ($runner -is [array]) { & @runner $selector --has 3.12 1>$null 2>$null } else { & $runner $selector --has 3.12 1>$null 2>$null }
+            if ($LASTEXITCODE -eq 0) { $has312 = $true }
+
+            if ($has312) {
+                $prompt = "Recreate .venv with Python 3.12 (recommended for full AI Operator)? [Y/n]"
+                if ($RecreateVenv) {
+                    Write-Host $prompt -ForegroundColor Yellow
+                    $ans = "Y"
+                }
+                else {
+                    $ans = Read-Host $prompt
+                }
+                if ($ans -eq "" -or $ans -eq "y" -or $ans -eq "Y") {
+                    Write-Host "Removing old .venv and creating Python 3.12 environment..." -ForegroundColor Yellow
+                    Remove-Item -Recurse -Force $venv
+                }
+                else {
+                    return $venv
+                }
+            }
+            elseif (-not $RecreateVenv) {
+                Write-Host ("Keeping existing Python " + $ver + " .venv (AI Operator may be limited).") -ForegroundColor Yellow
+                return $venv
+            }
         }
-        return $venv
+        else {
+            return $venv
+        }
     }
 
-    Write-Host "No .venv found - creating one (recommended for upgrades)..." -ForegroundColor Yellow
-    $pyCmd = Get-PythonForVenv
+    Write-Host "Creating .venv (default: Python 3.12 if installed)..." -ForegroundColor Yellow
+    $pyCmd = Invoke-SelectPython
     & @pyCmd -m venv $venv
     if (-not (Test-Path $pythonExe)) {
         throw ("Failed to create virtual environment at " + $venv)
@@ -301,6 +356,12 @@ if ([string]::IsNullOrWhiteSpace($InstallType)) {
 Write-Host ("[detected] Install type: " + $InstallType) -ForegroundColor Yellow
 
 if ($InstallType -eq "docker") {
+    if (-not $SkipBackup) {
+        Write-Host ""
+        Write-Host "[0/4] Backing up config and data..." -ForegroundColor Yellow
+        Invoke-InstallBackup -Dir $TargetDir
+    }
+
     if (-not (Test-DockerDaemon)) {
         Write-Host "ERROR: Docker install detected but Docker daemon is not running." -ForegroundColor Red
         Write-Host "Start Docker Desktop, or re-run with -InstallType native if this is a Python install." -ForegroundColor Yellow
@@ -308,7 +369,7 @@ if ($InstallType -eq "docker") {
     }
 
     Write-Host ""
-    Write-Host "[1/3] Stopping Docker service..." -ForegroundColor Yellow
+    Write-Host "[1/4] Stopping Docker service..." -ForegroundColor Yellow
     Push-Location $TargetDir
     try {
         & docker compose down
@@ -317,12 +378,12 @@ if ($InstallType -eq "docker") {
         }
 
         Write-Host ""
-        Write-Host "[2/3] Copying updated files..." -ForegroundColor Yellow
+        Write-Host "[2/4] Copying updated files..." -ForegroundColor Yellow
         Copy-UpgradeFiles -Dest $TargetDir -Source $SourceRoot
         Set-Content -Path (Join-Path $TargetDir ".install-type") -Value "docker" -Encoding ASCII
 
         Write-Host ""
-        Write-Host "[3/3] Rebuilding and restarting container..." -ForegroundColor Yellow
+        Write-Host "[3/4] Rebuilding and restarting container (Python 3.12 image)..." -ForegroundColor Yellow
         & docker compose build --no-cache
         if ($LASTEXITCODE -ne 0) {
             throw "docker compose build failed"
@@ -340,20 +401,26 @@ if ($InstallType -eq "docker") {
     Write-Host "Docker upgrade complete!" -ForegroundColor Green
 }
 else {
+    if (-not $SkipBackup) {
+        Write-Host ""
+        Write-Host "[0/5] Backing up config and data..." -ForegroundColor Yellow
+        Invoke-InstallBackup -Dir $TargetDir
+    }
+
     Write-Host ""
-    Write-Host "[1/4] Stopping running RocketLogAI processes..." -ForegroundColor Yellow
+    Write-Host "[1/5] Stopping running RocketLogAI processes..." -ForegroundColor Yellow
     Stop-RocketLogAIProcesses
 
     Write-Host ""
-    Write-Host "[2/4] Copying updated code..." -ForegroundColor Yellow
+    Write-Host "[2/5] Copying updated code..." -ForegroundColor Yellow
     Copy-UpgradeFiles -Dest $TargetDir -Source $SourceRoot
 
     Write-Host ""
-    Write-Host "[3/4] Installing/upgrading Python package in .venv..." -ForegroundColor Yellow
+    Write-Host "[3/5] Installing/upgrading Python package in .venv..." -ForegroundColor Yellow
     Install-NativePackage -Dir $TargetDir
 
     Write-Host ""
-    Write-Host "[4/4] Verifying installation..." -ForegroundColor Yellow
+    Write-Host "[4/5] Verifying installation..." -ForegroundColor Yellow
     $venvPython = Join-Path $TargetDir ".venv\Scripts\python.exe"
     Test-InstalledVersion -PythonExe $venvPython
 

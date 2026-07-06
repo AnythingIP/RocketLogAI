@@ -15,47 +15,41 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = "D:\logsentinel" 
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-Write-Host "`n[1/5] Checking for Python 3.10+ ..." -ForegroundColor Yellow
-$pythonCmd = $null
-try {
-    $pythonCmd = (Get-Command python -ErrorAction Stop).Source
-} catch {
-    try {
-        $pythonCmd = (Get-Command py -ErrorAction Stop).Source
-    } catch {}
-}
-
-if (-not $pythonCmd) {
-    Write-Host ""
-    Write-Host "Python 3.10 or newer was not found." -ForegroundColor Red
-    Write-Host "Please download and install it from:" -ForegroundColor Yellow
-    Write-Host "https://www.python.org/downloads/windows/" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "During installation, make sure you tick the box:" -ForegroundColor Yellow
-    Write-Host "   [x] Add python.exe to PATH" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Host "Then re-run this installer." -ForegroundColor Yellow
+Write-Host "`n[1/6] Selecting Python (recommended: 3.12)..." -ForegroundColor Yellow
+$selector = Join-Path $ScriptDir "rla_python.py"
+if (-not (Test-Path $selector)) {
+    Write-Host "ERROR: Missing scripts\rla_python.py" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Found Python at: $pythonCmd" -ForegroundColor Green
+$runner = if (Get-Command python -ErrorAction SilentlyContinue) { @("python") }
+          elseif (Get-Command py -ErrorAction SilentlyContinue) { @("py", "-3.12") }
+          else { $null }
 
-Write-Host "`n[2/5] Creating virtual environment..." -ForegroundColor Yellow
-$pyLauncher = @("python")
-if (Get-Command py -ErrorAction SilentlyContinue) {
-    foreach ($tag in @("-3.12", "-3.11", "-3.10")) {
-        & py $tag -c "import sys" 1>$null 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            $pyLauncher = @("py", $tag)
-            Write-Host ("Using Python via py " + $tag) -ForegroundColor Green
-            break
-        }
-    }
+if (-not $runner) {
+    Write-Host "Python 3.10+ not found. Install Python 3.12:" -ForegroundColor Red
+    Write-Host "https://www.python.org/downloads/release/python-3120/" -ForegroundColor Cyan
+    exit 1
 }
+
+$pyJson = & @runner $selector --ask
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Could not select Python interpreter." -ForegroundColor Red
+    exit 1
+}
+$pyInfo = $pyJson | ConvertFrom-Json
+$pyLauncher = @($pyInfo.command)
+
+if (Test-Path (Join-Path $InstallDir "config.yaml")) {
+    Write-Host "`n[1.5/6] Existing install detected - backing up first..." -ForegroundColor Yellow
+    & @runner (Join-Path $ScriptDir "rla_backup.py") $InstallDir --label pre-install
+}
+
+Write-Host "`n[2/6] Creating virtual environment..." -ForegroundColor Yellow
 & @pyLauncher -m venv "$InstallDir\.venv"
 . "$InstallDir\.venv\Scripts\Activate.ps1"
 
-Write-Host "`n[3/5] Copying RocketLogAI files..." -ForegroundColor Yellow
+Write-Host "`n[3/6] Copying RocketLogAI files..." -ForegroundColor Yellow
 robocopy "$SourceRoot\logsentinel" "$InstallDir\logsentinel" /E /NFL /NDL /NJH /NJS | Out-Null
 robocopy "$SourceRoot\templates" "$InstallDir\templates" /E /NFL /NDL /NJH /NJS | Out-Null
 Copy-Item "$SourceRoot\pyproject.toml" -Destination $InstallDir -Force
@@ -63,7 +57,7 @@ Copy-Item "$SourceRoot\requirements.txt" -Destination $InstallDir -Force -ErrorA
 Copy-Item "$SourceRoot\example-config.yaml" -Destination $InstallDir -Force -ErrorAction SilentlyContinue
 robocopy "$SourceRoot\scripts" "$InstallDir\scripts" /E /NFL /NDL /NJH /NJS | Out-Null
 
-Write-Host "`n[4/5] Installing dependencies..." -ForegroundColor Yellow
+Write-Host "`n[4/6] Installing dependencies..." -ForegroundColor Yellow
 pip install --upgrade pip setuptools wheel
 Set-Location $InstallDir
 pip install ".[web,v2]"
@@ -72,7 +66,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "`n[4.5/5] Installing optional AI Operator (open-interpreter)..." -ForegroundColor Yellow
+Write-Host "`n[4.5/6] Installing optional AI Operator (open-interpreter)..." -ForegroundColor Yellow
 pip install open-interpreter
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: open-interpreter skipped (common on Python 3.13+)." -ForegroundColor Yellow
@@ -81,7 +75,7 @@ if ($LASTEXITCODE -ne 0) {
 
 "native" | Out-File -Encoding ascii -FilePath "$InstallDir\.install-type" -Force
 
-Write-Host "`n[5/5] Creating launchers..." -ForegroundColor Yellow
+Write-Host "`n[5/6] Creating launchers..." -ForegroundColor Yellow
 
 @"
 @echo off
@@ -100,7 +94,11 @@ Set-Location `$PSScriptRoot
 logsentinel run --web
 "@ | Out-File -Encoding UTF8 -FilePath "$InstallDir\start-rocketlogai.ps1"
 
-Write-Host "`n✅ Installation complete!" -ForegroundColor Green
+Write-Host "`n[6/6] Done!" -ForegroundColor Green
+Write-Host ""
+Write-Host "Tip: Run .\scripts\setup.ps1 anytime for install, upgrade, Docker, or repair." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. cd $InstallDir"

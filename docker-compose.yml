@@ -20,15 +20,14 @@ services:
 
     volumes:
       # Persistent data (database, blacklists, MAC vendors, SSL certs, etc.)
-      - rocketlogai_data:/app/data
+      # Bind mount makes backup/upgrade easy — data lives in ./data next to this file
+      - ./data:/app/data
 
-      # === REQUIRED for Maps to show real locations ===
-      # Download GeoLite2-City.mmdb (free) from MaxMind and place it in the same folder as this compose file,
-      # then uncomment the line below:
+      # Config (created by install-docker from example-config.yaml if missing)
+      - ./config.yaml:/app/config.yaml:ro
+
+      # === Maps: place GeoLite2-City.mmdb in install dir, then uncomment: ===
       # - ./GeoLite2-City.mmdb:/app/GeoLite2-City.mmdb:ro
-
-      # Optional: Mount your own config.yaml
-      # - ./config.yaml:/app/config.yaml:ro
 
     environment:
       # You can pass config overrides here if desired
@@ -46,6 +45,7 @@ services:
       retries: 3
       start_period: 40s
 
-volumes:
-  rocketlogai_data:
-    driver: local
+# Named volume removed — ./data bind mount is used for easy backup/restore.
+# Migrating from old rocketlogai_data volume:
+#   docker compose down
+#   docker run --rm -v rocketlogai_data:/from -v ${PWD}/data:/to alpine cp -a /from/. /to/

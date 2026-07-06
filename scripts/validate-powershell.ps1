@@ -8,6 +8,8 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $targets = @(
     (Join-Path $ScriptDir "upgrade.ps1"),
     (Join-Path $ScriptDir "install.ps1"),
+    (Join-Path $ScriptDir "install-docker.ps1"),
+    (Join-Path $ScriptDir "setup.ps1"),
     (Join-Path $ScriptDir "check.ps1"),
     (Join-Path $ScriptDir "validate-powershell.ps1")
 )

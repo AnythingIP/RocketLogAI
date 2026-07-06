@@ -17,13 +17,25 @@ echo "Installing to: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
 echo
-echo "[1/5] Checking Python 3.10+ ..."
+echo "[1/6] Selecting Python (recommended: 3.12) ..."
+SELECTOR="$SOURCE_ROOT/scripts/rla_python.py"
+if [ ! -f "$SELECTOR" ]; then
+    echo "ERROR: missing scripts/rla_python.py"
+    exit 1
+fi
 if ! command -v python3 >/dev/null 2>&1; then
     echo "Python 3.10 or newer is required."
     exit 1
 fi
-PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-echo "Found Python $PYTHON_VERSION"
+PY_JSON="$(python3 "$SELECTOR" --ask)"
+mapfile -t PYTHON_LAUNCHER < <(python3 -c "import json,sys; print('\n'.join(json.loads(sys.argv[1])['command']))" "$PY_JSON")
+echo "Selected $(python3 -c "import json,sys; print(json.loads(sys.argv[1])['version'])" "$PY_JSON")"
+
+if [ -f "$INSTALL_DIR/config.yaml" ]; then
+    echo
+    echo "[1.5/6] Existing install detected - backing up first..."
+    python3 "$SOURCE_ROOT/scripts/rla_backup.py" "$INSTALL_DIR" --label pre-install || true
+fi
 
 # Auto-install required system packages on Debian/Ubuntu (makes one-click work on fresh servers)
 if command -v apt-get >/dev/null 2>&1; then
@@ -50,8 +62,8 @@ fi
 
 # Create virtual environment
 echo
-echo "[2/5] Creating virtual environment..."
-if ! python3 -m venv "$INSTALL_DIR/.venv"; then
+echo "[2/6] Creating virtual environment..."
+if ! "${PYTHON_LAUNCHER[@]}" -m venv "$INSTALL_DIR/.venv"; then
     echo ""
     echo "ERROR: Failed to create virtual environment even after installing system packages."
     echo "Please run this manually and then re-run the installer:"
@@ -63,7 +75,7 @@ fi
 source "$INSTALL_DIR/.venv/bin/activate"
 
 echo
-echo "[3/5] Copying RocketLogAI source into install directory..."
+echo "[3/6] Copying RocketLogAI source into install directory..."
 
 # Use portable cp instead of rsync (many minimal systems don't have rsync)
 cp -r "$SOURCE_ROOT/logsentinel" "$INSTALL_DIR/"
@@ -82,13 +94,13 @@ find "$INSTALL_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null ||
 find "$INSTALL_DIR" -name '*.pyc' -delete 2>/dev/null || true
 
 echo
-echo "[4/5] Installing dependencies (this may take a minute)..."
+echo "[4/6] Installing dependencies (this may take a minute)..."
 pip install --upgrade pip setuptools wheel
 
 cd "$INSTALL_DIR"
 
 # Install the package with web + v2 extras
-pip install ".[web,v2,ai]" || pip install ".[web]"
+pip install ".[web,v2]"
 if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt
 fi
@@ -132,7 +144,7 @@ pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode ri
 echo "native" > "$INSTALL_DIR/.install-type"
 
 echo
-echo "[5/5] Creating launcher scripts..."
+echo "[5/6] Creating launcher scripts..."
 
 cat > "$INSTALL_DIR/start-rocketlogai.sh" << 'EOF'
 #!/usr/bin/env bash
@@ -147,7 +159,10 @@ EOF
 chmod +x "$INSTALL_DIR/start-rocketlogai.sh"
 
 echo
-echo "✅ Installation complete!"
+echo "[6/6] Done!"
+echo "Tip: Run ./scripts/setup.sh anytime for install, upgrade, Docker, or repair."
+echo ""
+echo "Installation complete!"
 echo
 echo "Next steps:"
 echo "  1. cd $INSTALL_DIR"

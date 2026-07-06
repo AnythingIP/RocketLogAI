@@ -11,30 +11,41 @@ RocketLogAI v2 is a production-ready, local-first security platform. It ingests 
 
 This guide covers the easiest ways to get v2 running.
 
----
-
-## 1. Easiest: Docker (Recommended for most people)
+**One-click setup wizard (recommended):**
 
 ```bash
-# 1. Clone or copy the installer files
 git clone https://github.com/AnythingIP/RocketLogAI.git
-
 cd RocketLogAI
-
-# 2. Copy example config and edit it
-cp example-config.yaml config.yaml
-# Edit config.yaml - at minimum set your LLM base_url (or Azure/M365 Copilot details)
-
-# 3. Start it
-docker compose up -d
-
-# 4. Open the UI
-# http://your-server-ip:8787   (or the https port if you enabled SSL)
+./scripts/setup.sh          # Linux / macOS
 ```
 
-Default login: `admin / admin` (change this immediately in the UI under Users).
+```powershell
+git clone https://github.com/AnythingIP/RocketLogAI.git
+cd RocketLogAI
+.\scripts\setup.ps1         # Windows — install, Docker, upgrade, or repair
+```
 
-The container handles everything (Python, deps, SQLite, etc.).
+The wizard asks: **native Python**, **Docker**, **upgrade**, **health check**, or **restore from backup**.
+
+**Python version:** Native installs default to **Python 3.12** when available (full AI Operator). Docker always uses Python 3.12 inside the image.
+
+---
+
+## 1. Easiest: Docker (one-click)
+
+```bash
+git clone https://github.com/AnythingIP/RocketLogAI.git
+cd RocketLogAI
+./scripts/install-docker.sh ~/logsentinel
+```
+
+```powershell
+.\scripts\install-docker.ps1
+```
+
+Creates `config.yaml`, `./data` bind mount (easy backup), builds **Python 3.12** image, starts container.
+
+Open http://localhost:8787 — default login `admin / admin` (change immediately).
 
 ---
 

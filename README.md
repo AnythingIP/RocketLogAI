@@ -45,10 +45,20 @@ RocketLogAI is the opposite: everything runs on your machine, against your local
 
 ## Quick Start
 
-### 1. Install
+**Easiest:** clone and run the setup wizard — it handles install, upgrade, Docker, backup, and Python 3.12 selection:
 
 ```bash
-pip install -e ".[web,v2,ai]"   # full v2 experience (recommended)
+git clone https://github.com/AnythingIP/RocketLogAI.git && cd RocketLogAI && ./scripts/setup.sh
+```
+
+```powershell
+git clone https://github.com/AnythingIP/RocketLogAI.git; cd RocketLogAI; .\scripts\setup.ps1
+```
+
+### 1. Install (manual)
+
+```bash
+pip install -e ".[web,v2]"   # core v2 (recommended; add open-interpreter on Python 3.10-3.12)
 # or minimal:
 pip install -e ".[web]"     # dashboard + core (no vector DB / open-interpreter)
 # or for the absolute minimum core
