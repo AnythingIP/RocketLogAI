@@ -1469,58 +1469,18 @@ def _operator_keywords_match(question: str) -> bool:
     return len(q.split()) > 4 and any(w in q for w in ("the ", "these ", "my ", "local network"))
 
 
-def _try_fast_operator_plan(question: str) -> dict | None:
-    """Deterministic plans for simple read-only commands (no LLM required)."""
-    import platform
-    import re
+def _try_fast_operator_plan(question: str, storage: Any = None) -> dict | None:
+    """Parse explicit or natural-language operator commands without LLM."""
+    from .operator_nl import build_operator_plan_from_question, classify_assistant_input
 
-    q = question.strip()
-    ql = q.lower()
-
-    ping_match = re.search(
-        r"\bping\s+(?:the\s+)?([\d.]+|[a-z0-9][\w.-]*)",
-        ql,
-        re.I,
-    ) or re.search(
-        r"(?:can you|please)\s+ping\s+(?:the\s+)?([\d.]+|[a-z0-9][\w.-]*)",
-        ql,
-        re.I,
-    )
-    if ping_match:
-        host = ping_match.group(1).rstrip(".")
-        if platform.system() == "Windows":
-            cmd = f"ping -n 4 {host}"
-        else:
-            cmd = f"ping -c 4 {host}"
-        return {
-            "is_operator_command": True,
-            "is_actionable": True,
-            "intent": "ping",
-            "explanation": (
-                f"Ping {host} from the RocketLogAI server ({platform.system()}) "
-                "to verify reachability. Review the plan, then click Confirm & Execute."
-            ),
-            "targets": [{"ip": host, "name": host, "os_guess": "unknown"}],
-            "proposed_steps": [
-                {
-                    "step": 1,
-                    "description": f"Ping {host}",
-                    "command": cmd,
-                    "command_or_action": cmd,
-                    "os": "host",
-                    "risk": "low",
-                }
-            ],
-            "requires_confirmation": True,
-            "backup_recommended": False,
-            "rollback_notes": "Read-only ICMP test; nothing to roll back.",
-            "safety_notes": "Runs ping on the RocketLogAI host only (not remote devices unless SSH is used).",
-        }
-
+    ql = question.strip().lower()
     if ql in ("yes", "y", "ok", "okay", "confirm", "do it", "go ahead"):
         return None
 
-    return None
+    if classify_assistant_input(question) == "conversational":
+        return None
+
+    return build_operator_plan_from_question(question, storage=storage)
 
 
 def _normalize_operator_plan_response(plan: dict) -> dict:
@@ -1550,22 +1510,32 @@ def _plan_is_low_risk(plan: dict) -> bool:
 
 
 def _format_operator_result_text(result: dict) -> str:
+    import re
+
     lines: list[str] = []
-    if result.get("message"):
-        lines.append(str(result["message"]))
+    ok = bool(result.get("success"))
     for item in result.get("results") or []:
-        cmd = item.get("command") or ""
-        if cmd:
-            lines.append(f"$ {cmd}")
         output = (item.get("output") or "").strip()
+        desc = item.get("step") or item.get("description") or item.get("command") or "step"
         if output:
-            lines.append(output)
-        elif not item.get("success", False):
-            lines.append("(command failed with no output)")
+            if "reply from" in output.lower() or "bytes from" in output.lower():
+                # Friendly one-liner for successful ping
+                m = re.search(
+                    r"reply from (\S+).*?time[=<](\d+\s*ms)",
+                    output,
+                    re.I | re.DOTALL,
+                )
+                if m and item.get("success", ok):
+                    lines.append(f"{desc}: reachable ({m.group(2).strip()} from {m.group(1)})")
+                    continue
+            if not item.get("success", ok) and "could not find host" in output.lower():
+                lines.append(f"{desc}: host not found — I may have misread your request. Try an IP like 192.168.20.1 or say 'ping my gateway'.")
+                continue
+        lines.append(f"{desc}:\n{output or '(no output)'}")
     if not lines:
-        return "Command finished."
-    status = "completed successfully" if result.get("success") else "finished with errors"
-    return f"Operator action {status}:\n\n" + "\n".join(lines)
+        return "Done." if ok else "The command finished with errors."
+    lead = "Here are the results:" if ok else "Some checks failed:"
+    return lead + "\n\n" + "\n\n".join(lines)
 
 
 async def _run_shell_command_async(cmd: str, timeout: int = 45) -> Any:
@@ -1599,8 +1569,12 @@ async def api_assistant_ask(request: Request, user: str = Depends(require_login)
 
     looks_like_operator = _operator_keywords_match(question)
 
-    # Fast path: ping/traceroute-style commands work without any LLM backend.
-    fast_plan = _try_fast_operator_plan(question)
+    from .operator_nl import classify_assistant_input
+
+    input_kind = classify_assistant_input(question)
+
+    # Fast path: explicit IPs and resolved natural language (gateway, DNS, etc.)
+    fast_plan = _try_fast_operator_plan(question, storage=_storage)
     if fast_plan:
         fast_plan = _normalize_operator_plan_response(fast_plan)
         if _plan_is_low_risk(fast_plan) and _assistant_session_trusted(request):
@@ -1645,8 +1619,29 @@ async def api_assistant_ask(request: Request, user: str = Depends(require_login)
     except Exception as e:
         logger.warning(f"Phase 3 powerful controller failed, falling back: {e}")
 
+    # Ambiguous operator wording — use LLM to interpret or ask clarifying questions
+    if looks_like_operator and input_kind in ("operator_maybe", "operator_natural"):
+        plan = await _handle_operator_command(question, user)
+        if plan.get("is_operator_command"):
+            plan = _normalize_operator_plan_response(plan)
+            if _plan_is_low_risk(plan) and _assistant_session_trusted(request):
+                result = await _execute_operator_plan(plan, user, confirmed=True)
+                return {
+                    "mode": "operator_result",
+                    "answer": _format_operator_result_text(result),
+                    "result": result,
+                    "auto_executed": True,
+                }
+            return {
+                "mode": "operator_plan",
+                "plan": plan,
+                "answer": plan.get("explanation", "Here is what I understood — please review."),
+                "requires_confirmation": plan.get("requires_confirmation", True),
+                "session_trusted": _assistant_session_trusted(request),
+            }
+
     # Legacy Phase 2 operator path (LLM-backed plans for network/device commands)
-    if looks_like_operator:
+    if looks_like_operator and input_kind != "conversational":
         plan = await _handle_operator_command(question, user)
         if plan.get("is_operator_command"):
             plan = _normalize_operator_plan_response(plan)
