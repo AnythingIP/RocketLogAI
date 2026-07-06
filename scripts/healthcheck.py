@@ -345,6 +345,25 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
             issues.append(f"v2:{mod}")
 
     print()
+    print("[5b] AI Operator (open-interpreter)")
+    pip_show = _run([str(runtime), "-m", "pip", "show", "open-interpreter"])
+    pip_ver = None
+    if pip_show.returncode == 0:
+        for line in (pip_show.stdout or "").splitlines():
+            if line.lower().startswith("version:"):
+                pip_ver = line.split(":", 1)[1].strip()
+                break
+    oi_proc = _run([str(runtime), "-c", "import interpreter; print(getattr(interpreter, '__version__', 'ok'))"])
+    if oi_proc.returncode == 0:
+        _ok(f"open-interpreter importable ({oi_proc.stdout.strip() or pip_ver or 'ok'})")
+    elif pip_ver:
+        _warn(f"pip has open-interpreter {pip_ver} but import failed: {(oi_proc.stderr or '')[:120]}")
+        issues.append("open-interpreter:import")
+    else:
+        _warn("open-interpreter not installed (optional; ping/basic assistant still work)")
+        issues.append("open-interpreter:missing")
+
+    print()
     print("[6] v2 module integrity")
     for sub in ("brain", "remediate", "shield", "mobile", "mcp", "ueba"):
         path = install_dir / "logsentinel" / sub

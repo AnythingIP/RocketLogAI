@@ -12,12 +12,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-def _check(name: str, fn: Callable[[], tuple[bool, str, str]]) -> dict[str, Any]:
+def _check(name: str, fn: Callable[[], tuple[str, str, str]]) -> dict[str, Any]:
     try:
-        ok, detail, hint = fn()
+        status, detail, hint = fn()
+        if status not in ("ok", "warn", "fail"):
+            status = "ok" if status else "fail"
         return {
             "name": name,
-            "status": "ok" if ok else "fail",
+            "status": status,
             "detail": detail,
             "hint": hint,
         }
@@ -30,12 +32,33 @@ def _check(name: str, fn: Callable[[], tuple[bool, str, str]]) -> dict[str, Any]
         }
 
 
-def _import_ok(module: str) -> tuple[bool, str, str]:
+def _import_ok(module: str) -> tuple[str, str, str]:
     importlib.import_module(module)
-    return True, f"import {module}", ""
+    return "ok", f"import {module}", ""
 
 
-def _ping_local() -> tuple[bool, str, str]:
+def _in_virtualenv() -> bool:
+    if hasattr(sys, "real_prefix"):
+        return True
+    return getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+
+
+def _pip_show_version(package: str) -> str | None:
+    proc = subprocess.run(
+        [sys.executable, "-m", "pip", "show", package],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return None
+    for line in (proc.stdout or "").splitlines():
+        if line.lower().startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    return "installed"
+
+
+def _ping_local() -> tuple[str, str, str]:
     host = "127.0.0.1"
     if platform.system() == "Windows":
         cmd = ["ping", "-n", "1", "-w", "2000", host]
@@ -43,19 +66,40 @@ def _ping_local() -> tuple[bool, str, str]:
         cmd = ["ping", "-c", "1", "-W", "2", host]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
     if proc.returncode == 0:
-        return True, f"Host ping OK ({host})", ""
-    return False, (proc.stderr or proc.stdout or "ping failed")[:200], "Check Windows firewall / ICMP rules."
+        return "ok", f"Host ping OK ({host})", ""
+    return "fail", (proc.stderr or proc.stdout or "ping failed")[:200], "Check Windows firewall / ICMP rules."
 
 
-def _open_interpreter_status() -> tuple[bool, str, str]:
+def _python_runtime_status() -> tuple[str, str, str]:
+    ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    venv = _in_virtualenv()
+    detail = f"Python {ver} — {sys.executable}" + (" (.venv)" if venv else " (not in a venv)")
+    if sys.version_info < (3, 10):
+        return "fail", detail, "Use Python 3.12 in .venv."
+    if not venv:
+        return "warn", detail, "Start with .\\start-rocketlogai.ps1 so the server uses .venv packages."
+    return "ok", detail, ""
+
+
+def _open_interpreter_status() -> tuple[str, str, str]:
+    pip_ver = _pip_show_version("open-interpreter")
     try:
         import interpreter  # noqa: F401
-        return True, "open-interpreter installed", ""
-    except ImportError:
+
+        mod_ver = getattr(interpreter, "__version__", None) or pip_ver or "unknown"
+        return "ok", f"open-interpreter {mod_ver} importable in running server", ""
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"[:220]
+        if pip_ver:
+            return (
+                "warn",
+                f"pip shows open-interpreter {pip_ver} for {sys.executable} but import failed: {err}",
+                "Restart RocketLogAI via .\\start-rocketlogai.ps1 (server must use the same .venv you pip installed into).",
+            )
         return (
-            False,
-            "open-interpreter not installed",
-            "pip install open-interpreter (Python 3.10-3.12). Ping still works without it.",
+            "fail",
+            f"open-interpreter not available: {err}",
+            f"Install: {sys.executable} -m pip install open-interpreter (Python 3.10-3.12). Ping works without it.",
         )
 
 
@@ -93,11 +137,7 @@ def run_live_checks(
 ) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
 
-    checks.append(_check("python", lambda: (
-        sys.version_info >= (3, 10),
-        f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "Use Python 3.12 in .venv for full AI Operator support.",
-    )))
+    checks.append(_check("python:runtime", _python_runtime_status))
     checks.append(_check("ping_local", _ping_local))
     checks.append(_check("open_interpreter", _open_interpreter_status))
 
@@ -122,7 +162,7 @@ def run_live_checks(
         })
 
     if llm_client and hasattr(llm_client, "client") and hasattr(llm_client.client, "chat"):
-        def _llm_ping() -> tuple[bool, str, str]:
+        def _llm_ping() -> tuple[str, str, str]:
             model = getattr(getattr(llm_client, "cfg", None), "model", None) or "local"
             resp = llm_client.client.chat.completions.create(
                 model=model,
@@ -131,7 +171,7 @@ def run_live_checks(
                 temperature=0,
             )
             text = resp.choices[0].message.content if resp.choices else ""
-            return True, f"LLM completion OK ({text!r})", ""
+            return "ok", f"LLM completion OK ({text!r})", ""
 
         checks.append(_check("llm:completion", _llm_ping))
     else:

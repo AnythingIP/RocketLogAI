@@ -109,12 +109,15 @@ class AIAssistantController:
                 pass
 
             logger.info("Open Interpreter loaded successfully with safety wrappers enabled.")
-        except ImportError:
+        except Exception as exc:
             self.interpreter = None
             logger.warning(
-                "Open Interpreter ('open-interpreter' package) is not installed. "
-                "Powerful code execution and computer-use features will be limited. "
-                "Install with: pip install open-interpreter"
+                "Open Interpreter could not be loaded (%s: %s). "
+                "Powerful code execution will be limited. "
+                "Ensure open-interpreter is installed in the same Python that runs RocketLogAI "
+                "(.venv via start-rocketlogai.ps1), then restart the server.",
+                type(exc).__name__,
+                str(exc)[:200],
             )
 
     # ------------------------------------------------------------------
