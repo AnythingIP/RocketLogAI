@@ -1,6 +1,6 @@
 # RocketLogAI v2 Usage Guide
 
-> **v2.0.0 (production ecosystem)** — see [INSTALL.md](../INSTALL.md) and [architecture.md](architecture.md) for the full picture.
+> **v2.0.0** — hobby/homelab software (see [DISCLAIMER.md](../DISCLAIMER.md)). Full install: [INSTALL.md](../INSTALL.md) · [architecture.md](architecture.md)
 >
 > **New in v2:**
 > - **Unified AI brain** — MCP server (`logsentinel mcp`), vector RAG, conversation memory

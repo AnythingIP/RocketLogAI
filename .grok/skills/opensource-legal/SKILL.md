@@ -16,3 +16,6 @@ See:
 When adding features that run commands, change systems, or call external APIs: keep them
 off by default, require confirmation, and do not use "guaranteed" or "production-ready"
 wording in user-facing copy without linking the disclaimer.
+
+**Always sync README.md and docs/index.html in the same commit** when marketing or legal
+copy changes. See [legal/SHARED_COPY.md](../../legal/SHARED_COPY.md).

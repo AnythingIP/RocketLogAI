@@ -7,6 +7,7 @@ Copy this checklist for **every** new public repo you publish for fun.
 - [ ] **`LICENSE`** — MIT recommended (see [MIT template](../LICENSE))
 - [ ] **`DISCLAIMER.md`** — copy from [DISCLAIMER.md](../DISCLAIMER.md) and adjust project name
 - [ ] **`README.md`** — include the [README disclaimer block](README_DISCLAIMER_BLOCK.md)
+- [ ] **`docs/index.html`** (if you have a GitHub Pages site) — **same tagline as README** ([SHARED_COPY.md](SHARED_COPY.md))
 
 ## Strongly recommended
 
