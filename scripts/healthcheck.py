@@ -324,15 +324,6 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
             _fail(f"Missing v2 module: logsentinel/{sub}/")
             issues.append(f"v2mod:{sub}")
 
-    if install_type == "docker":
-        print()
-        print("[7] Docker")
-        if docker_available():
-            _ok("Docker daemon reachable")
-        else:
-            _fail("Docker not running (start Docker Desktop or docker service)")
-            issues.append("docker:down")
-
     print()
     print("[7] Install folder hygiene")
     cleanup_script = install_dir / "scripts" / "rla_cleanup.py"
@@ -350,6 +341,15 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
         issues.append("cleanup:junk")
     else:
         _ok("No common junk paths at install root")
+
+    if install_type == "docker":
+        print()
+        print("[8] Docker")
+        if docker_available():
+            _ok("Docker daemon reachable")
+        else:
+            _fail("Docker not running (start Docker Desktop or docker service)")
+            issues.append("docker:down")
 
     if fix and issues:
         print()
