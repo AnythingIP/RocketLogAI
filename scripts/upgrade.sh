@@ -173,12 +173,13 @@ install_native_package() {
     ensure_venv "$dir"
     # shellcheck disable=SC1091
     source "$dir/.venv/bin/activate"
-    pip install --upgrade pip setuptools wheel
+    pip install --upgrade pip wheel "setuptools>=65,<81"
     cd "$dir"
     echo "Installing core RocketLogAI packages [web,v2]..."
     pip install -e ".[web,v2]" --upgrade
     echo "Installing optional AI Operator extras (open-interpreter)..."
-    if ! pip install open-interpreter --upgrade 2>/dev/null; then
+    pip install "setuptools>=65,<81" --upgrade 2>/dev/null || true
+    if ! pip install "open-interpreter>=0.2.0" --upgrade 2>/dev/null; then
         echo "WARNING: open-interpreter skipped (common on Python 3.13+)."
         echo "  RocketLogAI core v2 is installed. Use Python 3.10-3.12 for full AI Operator."
     fi

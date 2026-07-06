@@ -123,7 +123,7 @@ def python_version_label(python_exe: Path) -> str | None:
 
 def pip_install_editable(install_dir: Path, python_exe: Path) -> bool:
     proc = _run(
-        [str(python_exe), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
+        [str(python_exe), "-m", "pip", "install", "--upgrade", "pip", "wheel", "setuptools>=65,<81"],
         cwd=install_dir,
     )
     if proc.returncode != 0:
@@ -138,14 +138,28 @@ def pip_install_editable(install_dir: Path, python_exe: Path) -> bool:
         _fail(f"editable install failed: {proc.stderr.strip()}")
         return False
 
-    # Optional AI Operator — fails on Python 3.13+ when tiktoken cannot build
+    # Optional AI Operator — open-interpreter 0.4.x needs setuptools<81 (pkg_resources)
+    _run(
+        [str(python_exe), "-m", "pip", "install", "setuptools>=65,<81", "--upgrade"],
+        cwd=install_dir,
+    )
     ai_proc = _run(
-        [str(python_exe), "-m", "pip", "install", "open-interpreter", "--upgrade"],
+        [str(python_exe), "-m", "pip", "install", "open-interpreter>=0.2.0", "--upgrade"],
         cwd=install_dir,
     )
     if ai_proc.returncode != 0:
         _warn("open-interpreter skipped (use Python 3.10-3.12 for full AI Operator)")
     return True
+
+
+def fix_open_interpreter(runtime: Path) -> bool:
+    """Repair broken open-interpreter import (usually missing pkg_resources / setuptools 82+)."""
+    _run([str(runtime), "-m", "pip", "install", "setuptools>=65,<81", "--upgrade"])
+    proc = _run([str(runtime), "-m", "pip", "install", "open-interpreter>=0.2.0", "--upgrade"])
+    if proc.returncode != 0:
+        return False
+    check = _run([str(runtime), "-c", "import interpreter"])
+    return check.returncode == 0
 
 
 def create_venv(install_dir: Path) -> Path | None:
@@ -357,7 +371,12 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
     if oi_proc.returncode == 0:
         _ok(f"open-interpreter importable ({oi_proc.stdout.strip() or pip_ver or 'ok'})")
     elif pip_ver:
-        _warn(f"pip has open-interpreter {pip_ver} but import failed: {(oi_proc.stderr or '')[:120]}")
+        err = (oi_proc.stderr or oi_proc.stdout or "import failed").strip()
+        if "pkg_resources" in err:
+            _warn(f"pip has open-interpreter {pip_ver} but needs setuptools<81 (pkg_resources): see hint below")
+            print("       Fix: pip install \"setuptools>=65,<81\" then restart RocketLogAI")
+        else:
+            _warn(f"pip has open-interpreter {pip_ver} but import failed: {err[:300]}")
         issues.append("open-interpreter:import")
     else:
         _warn("open-interpreter not installed (optional; ping/basic assistant still work)")
@@ -432,6 +451,12 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
                 issues = [i for i in issues if not i.startswith(("pip:", "dep:", "v2:", "venv:"))]
             else:
                 issues.append("fix:pip-failed")
+            if "open-interpreter:import" in issues or "open-interpreter:missing" in issues:
+                if fix_open_interpreter(runtime):
+                    _ok("open-interpreter import repaired (setuptools<81 pin)")
+                    issues = [i for i in issues if not i.startswith("open-interpreter:")]
+                else:
+                    _warn("open-interpreter still not importable after repair attempt")
 
     return issues
 

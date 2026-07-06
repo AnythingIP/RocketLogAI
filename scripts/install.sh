@@ -95,7 +95,7 @@ find "$INSTALL_DIR" -name '*.pyc' -delete 2>/dev/null || true
 
 echo
 echo "[4/6] Installing dependencies (this may take a minute)..."
-pip install --upgrade pip setuptools wheel
+pip install --upgrade pip wheel "setuptools>=65,<81"
 
 cd "$INSTALL_DIR"
 
@@ -107,6 +107,7 @@ fi
 
 # Open Interpreter with conflict-safe install (Rust not required for core; OI installed with --no-deps fallback)
 echo "Installing AI Assistant extras (open-interpreter + cryptography)..."
+pip install "setuptools>=65,<81" 2>/dev/null || true
 if ! pip install "open-interpreter>=0.2.0" cryptography 2>/dev/null; then
     echo "Full open-interpreter install failed; trying minimal install..."
     pip install --no-deps open-interpreter cryptography 2>/dev/null || true

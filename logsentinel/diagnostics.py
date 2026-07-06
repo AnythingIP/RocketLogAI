@@ -82,25 +82,9 @@ def _python_runtime_status() -> tuple[str, str, str]:
 
 
 def _open_interpreter_status() -> tuple[str, str, str]:
-    pip_ver = _pip_show_version("open-interpreter")
-    try:
-        import interpreter  # noqa: F401
+    from .oi_compat import probe_open_interpreter
 
-        mod_ver = getattr(interpreter, "__version__", None) or pip_ver or "unknown"
-        return "ok", f"open-interpreter {mod_ver} importable in running server", ""
-    except Exception as exc:
-        err = f"{type(exc).__name__}: {exc}"[:220]
-        if pip_ver:
-            return (
-                "warn",
-                f"pip shows open-interpreter {pip_ver} for {sys.executable} but import failed: {err}",
-                "Restart RocketLogAI via .\\start-rocketlogai.ps1 (server must use the same .venv you pip installed into).",
-            )
-        return (
-            "fail",
-            f"open-interpreter not available: {err}",
-            f"Install: {sys.executable} -m pip install open-interpreter (Python 3.10-3.12). Ping works without it.",
-        )
+    return probe_open_interpreter()
 
 
 def run_install_checks(install_dir: Path) -> list[dict[str, Any]]:

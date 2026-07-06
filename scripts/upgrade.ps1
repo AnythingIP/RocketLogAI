@@ -267,7 +267,8 @@ function Install-PythonDependencies {
     }
 
     Write-Host "Installing optional AI Operator extras (open-interpreter)..." -ForegroundColor Yellow
-    & $PythonExe -m pip install open-interpreter --upgrade
+    & $PythonExe -m pip install "setuptools>=65,<81" --upgrade
+    & $PythonExe -m pip install "open-interpreter>=0.2.0" --upgrade
     if ($LASTEXITCODE -ne 0) {
         Write-Host "WARNING: open-interpreter could not be installed (common on Python 3.13+)." -ForegroundColor Yellow
         Write-Host "  RocketLogAI core v2 is installed and will run normally." -ForegroundColor Yellow
@@ -297,7 +298,7 @@ function Install-NativePackage {
     $python = Join-Path $venv "Scripts\python.exe"
 
     Write-Host "Upgrading pip..." -ForegroundColor Yellow
-    & $python -m pip install --upgrade pip setuptools wheel
+    & $python -m pip install --upgrade pip wheel "setuptools>=65,<81"
     if ($LASTEXITCODE -ne 0) {
         throw "pip bootstrap failed"
     }

@@ -34,6 +34,7 @@ web = [
 ]
 ai = [
     "open-interpreter>=0.2.0",  # Phase 3: Powerful natural language operator (AI Assistant uses this as primary execution backend, heavily safety-wrapped)
+    "setuptools>=65,<81",  # open-interpreter 0.4.x imports pkg_resources (removed in setuptools 82+)
 ]
 full = [
     "fastapi>=0.110.0",
@@ -41,6 +42,7 @@ full = [
     "jinja2>=3.1.0",
     "cryptography>=42.0",
     "open-interpreter>=0.2.0",
+    "setuptools>=65,<81",
     # Note: "web" extra is what you normally want for the dashboard + LLM features.
     # Use `pip install -e ".[web,ai]"` (or ".[full]") for the complete experience including conversational AI Operator and advanced auth.
 ]

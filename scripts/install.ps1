@@ -63,7 +63,7 @@ Copy-Item "$SourceRoot\example-config.yaml" -Destination $InstallDir -Force -Err
 robocopy "$SourceRoot\scripts" "$InstallDir\scripts" /E /NFL /NDL /NJH /NJS | Out-Null
 
 Write-Host "`n[4/6] Installing dependencies..." -ForegroundColor Yellow
-pip install --upgrade pip setuptools wheel
+pip install --upgrade pip wheel "setuptools>=65,<81"
 Set-Location $InstallDir
 pip install ".[web,v2]"
 if ($LASTEXITCODE -ne 0) {
@@ -72,7 +72,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "`n[4.5/6] Installing optional AI Operator (open-interpreter)..." -ForegroundColor Yellow
-pip install open-interpreter
+pip install "setuptools>=65,<81"
+pip install "open-interpreter>=0.2.0"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "WARNING: open-interpreter skipped (common on Python 3.13+)." -ForegroundColor Yellow
     Write-Host "  RocketLogAI core v2 is installed. Use Python 3.10-3.12 for full AI Operator." -ForegroundColor Yellow
