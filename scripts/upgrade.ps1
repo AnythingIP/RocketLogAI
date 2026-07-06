@@ -151,7 +151,13 @@ function Invoke-InstallCleanup {
     }
 
     Write-Host "Cleaning install folder (remove junk, sync official layout)..." -ForegroundColor Yellow
-    $runner = Get-DefaultRunnerPython
+    try {
+        $runner = Get-DefaultRunnerPython
+    }
+    catch {
+        Write-Host ("WARNING: " + $_.Exception.Message + " Skipping cleanup.") -ForegroundColor Yellow
+        return
+    }
     Invoke-PythonLauncher -Launcher $runner -PythonArgs $cleanupPy, $Dir, '--source', $SourceRoot, '--fix'
 }
 
@@ -163,8 +169,13 @@ function Invoke-InstallBackup {
         Write-Host "WARNING: backup script not found, skipping backup." -ForegroundColor Yellow
         return
     }
-    $runner = Get-DefaultRunnerPython
-    Invoke-PythonLauncher -Launcher $runner -PythonArgs $backupPy, $Dir
+    try {
+        $runner = Get-DefaultRunnerPython
+        Invoke-PythonLauncher -Launcher $runner -PythonArgs $backupPy, $Dir
+    }
+    catch {
+        Write-Host ("WARNING: Backup skipped - " + $_.Exception.Message) -ForegroundColor Yellow
+    }
 }
 
 function Get-VenvPythonVersion {

@@ -77,37 +77,53 @@ function Test-PythonLauncherWorks {
         $Launcher
     )
 
+    $parts = Normalize-PythonLauncher $Launcher
+    if ($parts.Count -eq 0) {
+        return $false
+    }
+
+    $exe = $parts[0]
+    if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    $prefix = @()
+    if ($parts.Count -gt 1) {
+        $prefix = $parts[1..($parts.Count - 1)]
+    }
+
+    $oldEAP = $ErrorActionPreference
     try {
-        Invoke-PythonLauncher -Launcher $Launcher '-c', 'import sys'
+        $ErrorActionPreference = 'SilentlyContinue'
+        & $exe @prefix --version 1>$null 2>$null
         return ($LASTEXITCODE -eq 0)
     }
     catch {
         return $false
     }
+    finally {
+        $ErrorActionPreference = $oldEAP
+    }
 }
 
 function Get-DefaultRunnerPython {
     # Runner for helper scripts (rla_python.py, cleanup, backup).
-    # Use any working Python 3.10+ launcher; do not assume py -3.12 exists.
+    # Prefer 3.12 when available; fall back to any working launcher.
     $candidates = @(
-        @('python'),
-        @('py'),
         @('py', '-3.12'),
+        @('py'),
+        @('python'),
         @('py', '-3.11'),
         @('py', '-3.10')
     )
 
     foreach ($candidate in $candidates) {
-        $name = $candidate[0]
-        if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-            continue
-        }
         if (Test-PythonLauncherWorks -Launcher $candidate) {
             return $candidate
         }
     }
 
-    return @()
+    throw 'No working Python found. Install Python 3.12 and verify: py -3.12 --version'
 }
 
 function Test-PythonTagAvailable {
@@ -118,8 +134,10 @@ function Test-PythonTagAvailable {
         [string]$Tag
     )
 
-    $runner = Get-DefaultRunnerPython
-    if ($runner.Count -eq 0) {
+    try {
+        $runner = Get-DefaultRunnerPython
+    }
+    catch {
         return $false
     }
 
@@ -136,9 +154,6 @@ function Invoke-SelectPythonLauncher {
     )
 
     $runner = Get-DefaultRunnerPython
-    if ($runner.Count -eq 0) {
-        throw 'Python not found. Install Python 3.12 from https://www.python.org/downloads/windows/'
-    }
 
     $selectorArgs = @($SelectorScript)
     if ($Ask) {
@@ -160,7 +175,7 @@ function Invoke-SelectPythonLauncher {
     if (-not (Test-PythonLauncherWorks -Launcher $parsed.Launcher)) {
         $msg = 'Python launcher failed: ' + $cmdText + '.'
         if ($parsed.Tag -ne '3.12') {
-            $msg += ' Install Python 3.12 and ensure "py -3.12 -c ""import sys""" works.'
+            $msg += ' Install Python 3.12 and ensure "py -3.12 --version" works.'
         }
         else {
             $msg += ' Re-run the Python 3.12 installer and enable "py launcher".'
@@ -192,7 +207,7 @@ function New-PythonVenv {
         return $pythonExe
     }
 
-    Invoke-PythonLauncher -Launcher $Launcher '-m', 'venv', $VenvPath
+    Invoke-PythonLauncher -Launcher $Launcher -PythonArgs '-m', 'venv', $VenvPath
     if ($LASTEXITCODE -ne 0) {
         $cmdText = (Normalize-PythonLauncher $Launcher) -join ' '
         throw ('venv creation failed (exit ' + $LASTEXITCODE + ') using ' + $cmdText)
@@ -212,7 +227,7 @@ function Write-Python312InstallHelp {
     Write-Host 'To fix:' -ForegroundColor Cyan
     Write-Host '  1. Download Python 3.12: https://www.python.org/downloads/release/python-3120/' -ForegroundColor Cyan
     Write-Host '  2. Run installer, check "Add python.exe to PATH" and "py launcher"' -ForegroundColor Cyan
-    Write-Host '  3. Verify: py -3.12 -c "import sys; print(sys.version)"' -ForegroundColor Cyan
+    Write-Host '  3. Verify: py -3.12 --version' -ForegroundColor Cyan
     Write-Host '  4. Re-run this script' -ForegroundColor Cyan
     Write-Host ''
 }
