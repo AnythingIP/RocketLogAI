@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "🚀 RocketLogAI Installer for Windows" -ForegroundColor Cyan
+Write-Host "RocketLogAI Installer for Windows" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -77,22 +77,11 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`n[5/6] Creating launchers..." -ForegroundColor Yellow
 
-@"
-@echo off
-cd /d %~dp0
-call .venv\Scripts\activate.bat
-echo.
-echo Starting RocketLogAI...
-logsentinel run --web
-pause
-"@ | Out-File -Encoding ASCII -FilePath "$InstallDir\start-rocketlogai.bat"
+$batContent = "@echo off`r`ncd /d %~dp0`r`ncall .venv\Scripts\activate.bat`r`necho.`r`necho Starting RocketLogAI...`r`nlogsentinel run --web`r`npause`r`n"
+Set-Content -Path "$InstallDir\start-rocketlogai.bat" -Value $batContent -Encoding ASCII
 
-@"
-# Quick launcher
-Set-Location `$PSScriptRoot
-. .\.venv\Scripts\Activate.ps1
-logsentinel run --web
-"@ | Out-File -Encoding UTF8 -FilePath "$InstallDir\start-rocketlogai.ps1"
+$ps1Content = "Set-Location `$PSScriptRoot`n. .\.venv\Scripts\Activate.ps1`nlogsentinel run --web`n"
+Set-Content -Path "$InstallDir\start-rocketlogai.ps1" -Value $ps1Content -Encoding UTF8
 
 Write-Host "`n[6/6] Cleaning install folder..." -ForegroundColor Yellow
 $cleanupPy = Join-Path $ScriptDir "rla_cleanup.py"

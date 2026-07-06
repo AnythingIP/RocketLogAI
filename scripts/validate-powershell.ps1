@@ -20,6 +20,13 @@ foreach ($path in $targets) {
         Write-Host ("SKIP missing: " + $path)
         continue
     }
+    $raw = Get-Content -Path $path -Raw -Encoding UTF8
+    if ($raw -match '[^\x00-\x7F]') {
+        Write-Host ("FAIL " + $path + " (non-ASCII characters detected)") -ForegroundColor Red
+        $failed = $true
+        continue
+    }
+
     $errors = $null
     $tokens = $null
     $null = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)

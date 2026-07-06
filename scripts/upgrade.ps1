@@ -141,7 +141,7 @@ function Stop-RocketLogAIProcesses {
 function Get-RunnerPython {
     if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
     if (Get-Command py -ErrorAction SilentlyContinue) { return @("py", "-3.12") }
-    throw "Python not found — install Python 3.12 from https://www.python.org/downloads/windows/"
+    throw 'Python not found - install Python 3.12 from https://www.python.org/downloads/windows/'
 }
 
 function Invoke-SelectPython {
@@ -162,7 +162,8 @@ function Invoke-SelectPython {
     }
 
     $info = $json | ConvertFrom-Json
-    Write-Host ("Selected Python " + $info.version + " (" + ($info.command -join " ") + ")") -ForegroundColor Green
+    $cmdText = $info.command -join ' '
+    Write-Host ('Selected Python ' + $info.version + ' (' + $cmdText + ')') -ForegroundColor Green
     if (-not $info.ai_operator_full) {
         Write-Host "  Note: AI Operator may be limited on this Python version." -ForegroundColor Yellow
     }
@@ -208,7 +209,8 @@ function Invoke-InstallBackup {
 function Get-VenvPythonVersion {
     param([string]$PythonExe)
     if (-not (Test-Path $PythonExe)) { return $null }
-    return (& $PythonExe -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))").Trim()
+    $verCode = 'import sys; print(str(sys.version_info[0]) + chr(46) + str(sys.version_info[1]))'
+    return (& $PythonExe -c $verCode).Trim()
 }
 
 function Ensure-Venv {
@@ -219,7 +221,7 @@ function Ensure-Venv {
 
     if (Test-Path $pythonExe) {
         $ver = Get-VenvPythonVersion -PythonExe $pythonExe
-        $needsRecreate = $RecreateVenv -or ($ver -match "^3\.(1[3-9]|[2-9][0-9])")
+        $needsRecreate = $RecreateVenv -or ($ver -match '^3\.(1[3-9]|[2-9][0-9])')
 
         if ($needsRecreate) {
             $selector = Join-Path $SourceRoot "scripts\rla_python.py"
@@ -325,7 +327,11 @@ function Test-InstalledVersion {
     param([string]$PythonExe)
 
     $checkScript = Join-Path $env:TEMP ("rla_version_check_" + [guid]::NewGuid().ToString() + ".py")
-    Set-Content -Path $checkScript -Value "import logsentinel`nprint('RocketLogAI', logsentinel.__version__)" -Encoding ASCII
+    $checkLines = @(
+        'import logsentinel'
+        'print("RocketLogAI", logsentinel.__version__)'
+    )
+    Set-Content -Path $checkScript -Value $checkLines -Encoding ASCII
     try {
         & $PythonExe $checkScript
         if ($LASTEXITCODE -ne 0) {
