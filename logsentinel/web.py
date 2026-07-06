@@ -471,7 +471,7 @@ async def login(request: Request):
 @app.get("/logout")
 async def logout(request: Request):
     if HAS_SESSIONS:
-        request.session.clear()
+        request.session.clear()  # clears assistant_operator_trusted with session
     return RedirectResponse("/login", status_code=302)
 
 
@@ -1481,6 +1481,10 @@ def _try_fast_operator_plan(question: str) -> dict | None:
         r"\bping\s+(?:the\s+)?([\d.]+|[a-z0-9][\w.-]*)",
         ql,
         re.I,
+    ) or re.search(
+        r"(?:can you|please)\s+ping\s+(?:the\s+)?([\d.]+|[a-z0-9][\w.-]*)",
+        ql,
+        re.I,
     )
     if ping_match:
         host = ping_match.group(1).rstrip(".")
@@ -1524,9 +1528,62 @@ def _normalize_operator_plan_response(plan: dict) -> dict:
     for step in plan.get("proposed_steps") or []:
         if not step.get("command") and step.get("command_or_action"):
             step["command"] = step["command_or_action"]
-    if plan.get("is_actionable") and not plan.get("is_operator_command"):
+    if (plan.get("is_actionable") or plan.get("proposed_steps")) and not plan.get("is_operator_command"):
         plan["is_operator_command"] = True
     return plan
+
+
+def _assistant_session_trusted(request: Request) -> bool:
+    if not HAS_SESSIONS:
+        return False
+    return bool(request.session.get("assistant_operator_trusted"))
+
+
+def _plan_is_low_risk(plan: dict) -> bool:
+    intent = (plan.get("intent") or "").lower()
+    if intent in ("ping", "traceroute", "list_devices"):
+        return True
+    steps = plan.get("proposed_steps") or []
+    if not steps:
+        return False
+    return all((step.get("risk") or "low").lower() == "low" for step in steps)
+
+
+def _format_operator_result_text(result: dict) -> str:
+    lines: list[str] = []
+    if result.get("message"):
+        lines.append(str(result["message"]))
+    for item in result.get("results") or []:
+        cmd = item.get("command") or ""
+        if cmd:
+            lines.append(f"$ {cmd}")
+        output = (item.get("output") or "").strip()
+        if output:
+            lines.append(output)
+        elif not item.get("success", False):
+            lines.append("(command failed with no output)")
+    if not lines:
+        return "Command finished."
+    status = "completed successfully" if result.get("success") else "finished with errors"
+    return f"Operator action {status}:\n\n" + "\n".join(lines)
+
+
+async def _run_shell_command_async(cmd: str, timeout: int = 45) -> Any:
+    """Run a read-only shell command; shell=True on Windows for ping/tracert reliability."""
+    import subprocess
+    import platform
+
+    run_kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    if platform.system() == "Windows":
+        return await asyncio.to_thread(subprocess.run, cmd, shell=True, **run_kwargs)
+    import shlex
+    return await asyncio.to_thread(subprocess.run, shlex.split(cmd), **run_kwargs)
 
 
 @app.post("/api/assistant/ask")
@@ -1546,11 +1603,21 @@ async def api_assistant_ask(request: Request, user: str = Depends(require_login)
     fast_plan = _try_fast_operator_plan(question)
     if fast_plan:
         fast_plan = _normalize_operator_plan_response(fast_plan)
+        if _plan_is_low_risk(fast_plan) and _assistant_session_trusted(request):
+            result = await _execute_operator_plan(fast_plan, user, confirmed=True)
+            answer = _format_operator_result_text(result)
+            return {
+                "mode": "operator_result",
+                "answer": answer,
+                "result": result,
+                "auto_executed": True,
+            }
         return {
             "mode": "operator_plan",
             "plan": fast_plan,
             "answer": fast_plan.get("explanation", "Proposed action plan ready for your review."),
             "requires_confirmation": fast_plan.get("requires_confirmation", True),
+            "session_trusted": _assistant_session_trusted(request),
         }
 
     # Phase 3: powerful natural-language controller for complex requests.
@@ -1768,9 +1835,11 @@ async def api_assistant_confirm_execute(request: Request, user: str = Depends(re
     except Exception:
         return {"success": False, "error": "bad request"}
 
-    plan = data.get("plan") or {}
+    plan = _normalize_operator_plan_response(data.get("plan") or {})
     confirmed = bool(data.get("confirmed"))
     user_notes = data.get("user_notes")
+    if data.get("trust_session") and HAS_SESSIONS and confirmed:
+        request.session["assistant_operator_trusted"] = True
     return await _execute_assistant_plan(plan, user, confirmed=confirmed, user_notes=user_notes)
 
 
@@ -1784,9 +1853,11 @@ async def api_assistant_execute_async(request: Request, user: str = Depends(requ
     except Exception:
         return {"success": False, "error": "bad request"}
 
-    plan = data.get("plan") or {}
+    plan = _normalize_operator_plan_response(data.get("plan") or {})
     confirmed = bool(data.get("confirmed"))
     user_notes = data.get("user_notes")
+    if data.get("trust_session") and HAS_SESSIONS and confirmed:
+        request.session["assistant_operator_trusted"] = True
     label = (plan.get("intent") or "operator") + " plan"
 
     task_id = await ASSISTANT_TASKS.create(label=label, user=user)
@@ -1796,6 +1867,21 @@ async def api_assistant_execute_async(request: Request, user: str = Depends(requ
 
     asyncio.create_task(ASSISTANT_TASKS.run(task_id, _runner))
     return {"success": True, "task_id": task_id, "status": "queued"}
+
+
+@app.get("/api/assistant/session")
+async def api_assistant_session(request: Request, user: str = Depends(require_login)):
+    return {
+        "trusted": _assistant_session_trusted(request),
+        "user": user,
+    }
+
+
+@app.delete("/api/assistant/session/trust")
+async def api_assistant_clear_trust(request: Request, user: str = Depends(require_login)):
+    if HAS_SESSIONS:
+        request.session.pop("assistant_operator_trusted", None)
+    return {"success": True, "trusted": False}
 
 
 @app.get("/api/assistant/tasks/{task_id}")
@@ -1997,6 +2083,7 @@ async def _execute_operator_plan(plan: dict, user: str, confirmed: bool = False)
     if _storage is None:
         return {"success": False, "error": "storage not available"}
 
+    plan = _normalize_operator_plan_response(plan)
     if not plan.get("is_operator_command"):
         return {"success": False, "error": "Not an operator plan"}
 
@@ -2042,16 +2129,17 @@ async def _execute_operator_plan(plan: dict, user: str, confirmed: bool = False)
 
             # Ping / traceroute / basic network (use system tools, cross-platform)
             if intent in ("ping", "traceroute") or "ping" in cmd.lower() or "traceroute" in cmd.lower():
-                # Already safe read-only commands (thread pool — do not block other HTTP requests)
-                proc = await asyncio.to_thread(
-                    subprocess.run,
-                    shlex.split(cmd) if " " in cmd else [cmd],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
+                proc = await _run_shell_command_async(cmd, timeout=30)
                 step_result["output"] = (proc.stdout or "") + (proc.stderr or "")
-                step_result["success"] = proc.returncode == 0
+                # Windows ping may return 1 on partial loss; treat output as success if reply received
+                combined = step_result["output"].lower()
+                has_reply = any(
+                    token in combined
+                    for token in ("reply from", "bytes from", "ttl=", "time=", "time<")
+                )
+                step_result["success"] = proc.returncode == 0 or (
+                    intent == "ping" and has_reply and bool(step_result["output"].strip())
+                )
 
             elif intent == "nmap_basic" or "nmap" in cmd.lower():
                 if shutil.which("nmap"):
