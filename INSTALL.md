@@ -158,24 +158,46 @@ This page is the living documentation + feedback system.
 
 ## Updating / Upgrading
 
-**Recommended:** Use the upgrade script included in every release tarball.
+**Recommended:** Git clone the latest release, then run the upgrade script from the new source tree.
 
-Linux / macOS (from the new installer dir):
 ```bash
-./scripts/upgrade.sh /path/to/your/existing/logsentinel
+git clone https://github.com/AnythingIP/RocketLogAI.git
+cd RocketLogAI
 ```
 
-Windows (Admin PowerShell):
+Linux / macOS:
+```bash
+./scripts/upgrade.sh /path/to/your/existing/install --native --fix
+```
+
+Windows (PowerShell):
 ```powershell
-.\scripts\upgrade.ps1 -TargetDir "D:\logsentinel"
+.\scripts\upgrade.ps1 -TargetDir "D:\logsentinel" -InstallType native -Fix
 ```
 
-The script stops the service, copies the updated `logsentinel/`, `templates/`, and `scripts/`, reinstalls the Python package in your existing venv, updates launchers, and restarts. Your `config.yaml` and `data/` (including the DB) are left untouched.
+The upgrade script:
+- Auto-detects **native** vs **Docker** (won't mistake a native install just because `docker-compose.yml` exists)
+- Copies updated `logsentinel/`, `templates/`, `scripts/`, and v2 modules
+- Creates a `.venv` if missing and installs `pip install -e ".[web,v2,ai]"`
+- Preserves your `config.yaml` and `data/` (including the database)
 
-**Manual alternative:**
-Stop the service/container, replace the `logsentinel/` and `templates/` folders (and scripts/ if changed), keep your `config.yaml` and `logsentinel.db`, then restart. For Docker: `docker compose build --no-cache && docker compose up -d`.
+**Health check / repair** (run anytime):
+```bash
+python scripts/healthcheck.py /path/to/install --fix
+# or wrappers:
+./scripts/check.sh ~/logsentinel --fix          # Linux/macOS
+.\scripts\check.ps1 -InstallDir D:\logsentinel -Fix   # Windows
+```
 
-After upgrade, visit the new **Daily Briefing** page (/daily) to see the Operator Companion in action.
+**Important on Windows:** After upgrading, use `.\start-rocketlogai.ps1` from your install directory — not a globally installed `logsentinel` from another Python.
+
+**Docker upgrades** (only when actually running in Docker):
+```bash
+./scripts/upgrade.sh /path/to/install --docker
+```
+Requires Docker Desktop/daemon to be running.
+
+After upgrade, open http://localhost:8787 and verify the v2 dashboard.
 
 ---
 
@@ -195,4 +217,4 @@ If you run into any issues during the move, the most common fixes are:
 - Network access for syslog/HA
 - Proper file permissions on Linux
 
-Good luck with the new deployment! This version (1.2.0) includes the full iBMi conversational automation, multi-geo, M365 Copilot support, the new AI Assistant, and many usability improvements.
+Good luck with the new deployment! RocketLogAI v2.0 includes the full ecosystem (RocketRemediate, RocketShield, mobile API, MCP brain), plus all v1.x features.

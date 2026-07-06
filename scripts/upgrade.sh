@@ -1,33 +1,55 @@
 #!/usr/bin/env bash
 # RocketLogAI Upgrade Script (Linux / macOS / WSL)
-# Run this from a *new* RocketLogAI-*-Installer directory (or source tree)
-# to upgrade an existing installation in-place.
 #
 # Usage:
-#   ./scripts/upgrade.sh [TARGET_INSTALL_DIR]
+#   ./scripts/upgrade.sh [TARGET_DIR] [--native|--docker] [--fix]
 #
-# It will:
-#   - Detect docker vs native venv install
-#   - Stop the service / container
-#   - Copy updated code (logsentinel/, templates/, scripts/)
-#   - Re-install Python package (preserves venv)
-#   - Preserve your config.yaml and data/
-#   - Restart
-#
-# Always backup first! (especially data/logsentinel.db and config.yaml)
+# Run from a git-cloned RocketLogAI source directory.
 
-set -e
+set -euo pipefail
 
-echo "🔄 RocketLogAI Upgrade"
+SHOW_HELP=false
+INSTALL_TYPE=""
+FIX=false
+TARGET_DIR=""
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help) SHOW_HELP=true ;;
+        --native) INSTALL_TYPE="native" ;;
+        --docker) INSTALL_TYPE="docker" ;;
+        --fix) FIX=true ;;
+        *) TARGET_DIR="$arg" ;;
+    esac
+done
+
+if [ "$SHOW_HELP" = true ]; then
+    cat <<'EOF'
+RocketLogAI Upgrade
+
+Usage:
+  ./scripts/upgrade.sh [TARGET_DIR] [--native|--docker] [--fix]
+
+Options:
+  --native   Force native (venv) upgrade
+  --docker   Force Docker upgrade
+  --fix      Run health check repair after upgrade
+  --help     Show this help
+
+Example:
+  ./scripts/upgrade.sh ~/logsentinel --native --fix
+EOF
+    exit 0
+fi
+
+echo "RocketLogAI Upgrade"
 echo "======================"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"   # the new installer / source dir
-
-TARGET_DIR="${1:-}"
+SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"
 
 if [ -z "$TARGET_DIR" ]; then
-    echo "Enter path to your existing RocketLogAI installation (e.g. /opt/logsentinel or ~/logsentinel or the dir with docker-compose.yml):"
+    echo "Enter path to your existing RocketLogAI installation:"
     read -r TARGET_DIR
 fi
 
@@ -36,109 +58,81 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
+TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+
 echo "Upgrading: $TARGET_DIR"
 echo "Using new code from: $SOURCE_ROOT"
 echo
 
-# Detect type of install
-IS_DOCKER=false
-if [ -f "$TARGET_DIR/docker-compose.yml" ] || [ -f "$TARGET_DIR/../docker-compose.yml" ]; then
-    IS_DOCKER=true
-    echo "[detected] Docker Compose installation"
-fi
+docker_daemon_ok() {
+    command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
 
-if [ "$IS_DOCKER" = true ]; then
-    echo
-    echo "[1/4] Stopping Docker service..."
-    (cd "$TARGET_DIR" && docker compose down) || (cd "$TARGET_DIR/.." && docker compose down) || true
-
-    echo
-    echo "[2/4] Copying updated application files (Docker will rebuild)..."
-    # For docker we usually just need the source in the build context.
-    # If user mounted or has the files next to compose, copy them.
-    if [ -d "$TARGET_DIR/logsentinel" ]; then
-        cp -r "$SOURCE_ROOT/logsentinel" "$TARGET_DIR/"
+detect_install_type() {
+    local dir="$1"
+    if [ -f "$dir/.install-type" ]; then
+        local t
+        t="$(tr '[:upper:]' '[:lower:]' < "$dir/.install-type" | tr -d '[:space:]')"
+        if [ "$t" = "native" ] || [ "$t" = "docker" ]; then
+            echo "$t"
+            return
+        fi
     fi
-    if [ -d "$TARGET_DIR/templates" ]; then
-        cp -r "$SOURCE_ROOT/templates" "$TARGET_DIR/"
+    if [ -d "$dir/.venv" ]; then
+        echo "native"
+        return
     fi
-    cp -f "$SOURCE_ROOT/Dockerfile" "$TARGET_DIR/" 2>/dev/null || true
-    cp -f "$SOURCE_ROOT/docker-compose.yml" "$TARGET_DIR/" 2>/dev/null || true
-    cp -f "$SOURCE_ROOT/pyproject.toml" "$TARGET_DIR/" 2>/dev/null || true
-    cp -f "$SOURCE_ROOT/requirements.txt" "$TARGET_DIR/" 2>/dev/null || true
-    cp -f "$SOURCE_ROOT/example-config.yaml" "$TARGET_DIR/" 2>/dev/null || true
+    if docker_daemon_ok; then
+        if docker ps -a --filter "name=rocketlogai" --format '{{.Names}}' 2>/dev/null | grep -q rocketlogai; then
+            echo "docker"
+            return
+        fi
+    fi
+    if [ -f "$dir/config.yaml" ] || [ -f "$dir/data/logsentinel.db" ]; then
+        echo "native"
+        return
+    fi
+    if [ -f "$dir/docker-compose.yml" ] && docker_daemon_ok; then
+        echo "docker"
+        return
+    fi
+    echo "native"
+}
 
-    echo
-    echo "[3/4] Rebuilding Docker image..."
-    (cd "$TARGET_DIR" && docker compose build --no-cache) || (cd "$TARGET_DIR/.." && docker compose build --no-cache)
-
-    echo
-    echo "[4/4] Starting upgraded container..."
-    (cd "$TARGET_DIR" && docker compose up -d) || (cd "$TARGET_DIR/.." && docker compose up -d)
-
-    echo
-    echo "✅ Docker upgrade complete!"
-    echo "   Run: docker compose logs -f rocketlogai"
-    exit 0
-fi
-
-# === Native (venv) upgrade ===
-echo
-echo "[1/5] Stopping service if running (systemd)..."
-if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl stop rocketlogai 2>/dev/null || true
-    # Also try common names
-    sudo systemctl stop logsentinel 2>/dev/null || true
-fi
-
-# Try to find venv
-VENV_DIR="$TARGET_DIR/.venv"
-if [ ! -d "$VENV_DIR" ]; then
-    echo "Looking for venv in common locations..."
-    for cand in "$TARGET_DIR" "$TARGET_DIR/.." "$HOME/logsentinel" "/opt/logsentinel"; do
-        if [ -d "$cand/.venv" ]; then
-            VENV_DIR="$cand/.venv"
-            TARGET_DIR="$cand"
-            echo "Found venv at $VENV_DIR"
-            break
+copy_upgrade_files() {
+    local dest="$1"
+    for d in logsentinel templates scripts helm tests; do
+        if [ -d "$SOURCE_ROOT/$d" ]; then
+            cp -r "$SOURCE_ROOT/$d" "$dest/"
         fi
     done
-fi
+    for f in pyproject.toml requirements.txt example-config.yaml Dockerfile docker-compose.yml INSTALL.md README.md; do
+        [ -f "$SOURCE_ROOT/$f" ] && cp -f "$SOURCE_ROOT/$f" "$dest/"
+    done
+    find "$dest" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+    find "$dest" -name '*.pyc' -delete 2>/dev/null || true
+}
 
-if [ ! -d "$VENV_DIR" ]; then
-    echo "ERROR: Could not find .venv in $TARGET_DIR"
-    echo "Please activate your venv manually and run the pip upgrade step yourself."
-    exit 1
-fi
+ensure_venv() {
+    local dir="$1"
+    if [ -d "$dir/.venv/bin" ]; then
+        return 0
+    fi
+    echo "No .venv found — creating one..."
+    python3 -m venv "$dir/.venv"
+}
 
-echo
-echo "[2/5] Copying updated code into $TARGET_DIR ..."
-cp -r "$SOURCE_ROOT/logsentinel" "$TARGET_DIR/"
-cp -r "$SOURCE_ROOT/templates" "$TARGET_DIR/"
-cp -f "$SOURCE_ROOT/pyproject.toml" "$TARGET_DIR/" 2>/dev/null || true
-cp -f "$SOURCE_ROOT/requirements.txt" "$TARGET_DIR/" 2>/dev/null || true
-cp -f "$SOURCE_ROOT/example-config.yaml" "$TARGET_DIR/" 2>/dev/null || true
-cp -r "$SOURCE_ROOT/scripts" "$TARGET_DIR/" 2>/dev/null || true
-
-# Clean pycache
-find "$TARGET_DIR" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
-find "$TARGET_DIR" -name '*.pyc' -delete 2>/dev/null || true
-
-echo
-echo "[3/5] Activating venv and upgrading Python package..."
-# shellcheck disable=SC1091
-source "$VENV_DIR/bin/activate"
-
-pip install --upgrade pip setuptools wheel
-cd "$TARGET_DIR"
-pip install -e ".[web]" --upgrade
-
-# Belt-and-suspenders for any new deps in web extras
-pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode rich click pyyaml openai geoip2 requests ldap3 python-multipart 2>/dev/null || true
-
-echo
-echo "[4/5] Updating launcher scripts (if present)..."
-cat > "$TARGET_DIR/start-rocketlogai.sh" << 'EOF'
+install_native_package() {
+    local dir="$1"
+    ensure_venv "$dir"
+    # shellcheck disable=SC1091
+    source "$dir/.venv/bin/activate"
+    pip install --upgrade pip setuptools wheel
+    cd "$dir"
+    pip install -e ".[web,v2,ai]" --upgrade
+    pip install open-interpreter cryptography --upgrade 2>/dev/null || true
+    echo "native" > "$dir/.install-type"
+    cat > "$dir/start-rocketlogai.sh" << 'EOF'
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")"
@@ -146,33 +140,72 @@ source .venv/bin/activate
 echo "Starting RocketLogAI..."
 logsentinel run --web
 EOF
-chmod +x "$TARGET_DIR/start-rocketlogai.sh" 2>/dev/null || true
+    chmod +x "$dir/start-rocketlogai.sh"
+}
 
-echo
-echo "[5/5] Restarting service..."
-if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl daemon-reload 2>/dev/null || true
-    if systemctl is-enabled rocketlogai >/dev/null 2>&1; then
-        sudo systemctl restart rocketlogai || true
-    elif systemctl is-enabled logsentinel >/dev/null 2>&1; then
-        sudo systemctl restart logsentinel || true
-    else
-        echo "No systemd service found or enabled. Start manually with:"
-        echo "   cd $TARGET_DIR && ./start-rocketlogai.sh"
+if [ -z "$INSTALL_TYPE" ]; then
+    INSTALL_TYPE="$(detect_install_type "$TARGET_DIR")"
+fi
+
+echo "[detected] Install type: $INSTALL_TYPE"
+
+if [ "$INSTALL_TYPE" = "docker" ]; then
+    if ! docker_daemon_ok; then
+        echo "ERROR: Docker install detected but Docker daemon is not running."
+        echo "Start Docker, or re-run with --native if this is a Python install."
+        exit 1
     fi
+
+    echo
+    echo "[1/3] Stopping Docker service..."
+    (cd "$TARGET_DIR" && docker compose down)
+
+    echo
+    echo "[2/3] Copying updated files..."
+    copy_upgrade_files "$TARGET_DIR"
+    echo "docker" > "$TARGET_DIR/.install-type"
+
+    echo
+    echo "[3/3] Rebuilding and restarting container..."
+    (cd "$TARGET_DIR" && docker compose build --no-cache && docker compose up -d)
+
+    echo
+    echo "Docker upgrade complete!"
 else
-    echo "Start manually:"
-    echo "   cd $TARGET_DIR && ./start-rocketlogai.sh"
+    echo
+    echo "[1/4] Stopping service if running..."
+    if command -v systemctl >/dev/null 2>&1; then
+        sudo systemctl stop rocketlogai 2>/dev/null || true
+        sudo systemctl stop logsentinel 2>/dev/null || true
+    fi
+    pkill -f "logsentinel run" 2>/dev/null || true
+
+    echo
+    echo "[2/4] Copying updated code..."
+    copy_upgrade_files "$TARGET_DIR"
+
+    echo
+    echo "[3/4] Installing/upgrading Python package..."
+    install_native_package "$TARGET_DIR"
+
+    echo
+    echo "[4/4] Verifying installation..."
+    "$TARGET_DIR/.venv/bin/python" -c "import logsentinel; print('RocketLogAI', logsentinel.__version__)"
+
+    echo
+    echo "Native upgrade complete!"
+    echo
+    echo "Start with:"
+    echo "  cd $TARGET_DIR && ./start-rocketlogai.sh"
+fi
+
+if [ "$FIX" = true ] && [ -f "$SOURCE_ROOT/scripts/healthcheck.py" ]; then
+    echo
+    echo "Running health check repair..."
+    python3 "$SOURCE_ROOT/scripts/healthcheck.py" "$TARGET_DIR" --fix || true
 fi
 
 echo
-echo "✅ Upgrade complete!"
-echo
-echo "Important:"
-echo "  - Your config.yaml and data/ were left untouched."
-echo "  - New features (Daily Briefing at /daily, Ollama fixes, improved config UI) are now active."
-echo "  - If you use systemd, you may want to review /etc/systemd/system/rocketlogai.service"
-echo "  - Check logs: journalctl -u rocketlogai -f   (or docker logs)"
-echo
-echo "Open the web UI and verify everything works (especially LLM connection)."
+echo "Your config.yaml and data/ were preserved."
+echo "Open http://localhost:8787 and verify the dashboard."
 echo

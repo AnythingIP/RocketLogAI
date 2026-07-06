@@ -129,6 +129,8 @@ fi
 # One more safety pass for common web + security deps
 pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode rich click pyyaml openai geoip2 requests ldap3 python-multipart cryptography 2>/dev/null || true
 
+echo "native" > "$INSTALL_DIR/.install-type"
+
 echo
 echo "[5/5] Creating launcher scripts..."
 

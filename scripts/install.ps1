@@ -60,6 +60,8 @@ pip install ".[web,v2,ai]"
 Write-Host "`n[4.5/5] Installing Phase 3/4 AI + Auth extras (open-interpreter for conversational operator, cryptography for encrypted secrets)..." -ForegroundColor Yellow
 pip install open-interpreter cryptography
 
+"native" | Out-File -Encoding ascii -FilePath "$InstallDir\.install-type" -Force
+
 Write-Host "`n[5/5] Creating launchers..." -ForegroundColor Yellow
 
 @"

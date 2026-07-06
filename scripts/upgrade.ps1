@@ -1,19 +1,50 @@
 # RocketLogAI Upgrade Script for Windows (PowerShell)
-# Run from an elevated PowerShell prompt, from inside a *new* extracted installer directory.
+# Run from a git-cloned or extracted RocketLogAI source directory.
 #
 # Usage:
 #   .\scripts\upgrade.ps1 -TargetDir "D:\logsentinel"
-#
-# It stops running instances, copies updated code, upgrades the pip package in the existing venv,
-# and restarts.
+#   .\scripts\upgrade.ps1 -TargetDir "D:\logsentinel" -InstallType native
+#   .\scripts\upgrade.ps1 -Help
 
 param(
-    [string]$TargetDir = ""
+    [string]$TargetDir = "",
+    [ValidateSet("", "native", "docker")]
+    [string]$InstallType = "",
+    [switch]$Help,
+    [switch]$Fix
 )
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "🔄 RocketLogAI Upgrade (Windows)" -ForegroundColor Cyan
+function Show-Help {
+    Write-Host @"
+RocketLogAI Upgrade (Windows)
+
+Usage:
+  .\scripts\upgrade.ps1 [-TargetDir PATH] [-InstallType native|docker] [-Fix]
+
+Options:
+  -TargetDir     Existing installation (default: prompt)
+  -InstallType   Force native or docker (auto-detected if omitted)
+  -Fix           Run health check repair after upgrade
+  -Help          Show this help
+
+Examples:
+  .\scripts\upgrade.ps1 -TargetDir D:\logsentinel
+  .\scripts\upgrade.ps1 -TargetDir D:\logsentinel -InstallType native -Fix
+
+After upgrade, start with:
+  cd D:\logsentinel
+  .\start-rocketlogai.ps1
+"@
+}
+
+if ($Help -or $TargetDir -in @("-h", "--help", "/?")) {
+    Show-Help
+    exit 0
+}
+
+Write-Host "RocketLogAI Upgrade (Windows)" -ForegroundColor Cyan
 Write-Host "====================================" -ForegroundColor Cyan
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -23,98 +54,126 @@ if ([string]::IsNullOrWhiteSpace($TargetDir)) {
     $TargetDir = Read-Host "Enter path to your EXISTING RocketLogAI installation (e.g. D:\logsentinel)"
 }
 
+if ($TargetDir -in @("-h", "--help", "/?")) {
+    Show-Help
+    exit 0
+}
+
 if (-not (Test-Path $TargetDir)) {
     Write-Host "ERROR: Target directory does not exist: $TargetDir" -ForegroundColor Red
     exit 1
 }
 
+$TargetDir = (Resolve-Path $TargetDir).Path
+
 Write-Host "Upgrading: $TargetDir"
 Write-Host "Using new code from: $SourceRoot"
 Write-Host ""
 
-# Detect docker
-$IsDocker = $false
-if ((Test-Path "$TargetDir\docker-compose.yml") -or (Test-Path "$TargetDir\..\docker-compose.yml")) {
-    $IsDocker = $true
-    Write-Host "[detected] Docker Compose installation" -ForegroundColor Yellow
+function Test-DockerDaemon {
+    try {
+        $null = docker info 2>&1
+        return $LASTEXITCODE -eq 0
+    } catch {
+        return $false
+    }
 }
 
-if ($IsDocker) {
-    Write-Host "`n[1/3] Stopping Docker service..." -ForegroundColor Yellow
-    try { Push-Location $TargetDir; docker compose down } catch { try { Push-Location (Join-Path $TargetDir ".."); docker compose down } catch {} }
+function Get-DetectedInstallType {
+    param([string]$Dir)
 
-    Write-Host "`n[2/3] Copying updated files for Docker rebuild..." -ForegroundColor Yellow
-    if (Test-Path "$TargetDir\logsentinel") {
-        robocopy "$SourceRoot\logsentinel" "$TargetDir\logsentinel" /E /NFL /NDL /NJH /NJS | Out-Null
-    }
-    if (Test-Path "$TargetDir\templates") {
-        robocopy "$SourceRoot\templates" "$TargetDir\templates" /E /NFL /NDL /NJH /NJS | Out-Null
-    }
-    Copy-Item "$SourceRoot\Dockerfile" -Destination $TargetDir -Force -ErrorAction SilentlyContinue
-    Copy-Item "$SourceRoot\docker-compose.yml" -Destination $TargetDir -Force -ErrorAction SilentlyContinue
-    Copy-Item "$SourceRoot\pyproject.toml" -Destination $TargetDir -Force -ErrorAction SilentlyContinue
-
-    Write-Host "`n[3/3] Rebuilding and restarting container..." -ForegroundColor Yellow
-    try { Push-Location $TargetDir; docker compose build --no-cache; docker compose up -d } catch {
-        Push-Location (Join-Path $TargetDir "..")
-        docker compose build --no-cache
-        docker compose up -d
+    $marker = Join-Path $Dir ".install-type"
+    if (Test-Path $marker) {
+        $value = (Get-Content $marker -Raw).Trim().ToLower()
+        if ($value -in @("native", "docker")) { return $value }
     }
 
-    Write-Host "`n✅ Docker upgrade complete!" -ForegroundColor Green
-    exit 0
+    if (Test-Path (Join-Path $Dir ".venv")) { return "native" }
+
+    if (Test-DockerDaemon) {
+        $containers = docker ps -a --filter "name=rocketlogai" --format "{{.Names}}" 2>$null
+        if ($containers -match "rocketlogai") { return "docker" }
+    }
+
+    # docker-compose.yml ships with native installs — config/data means native
+    if ((Test-Path (Join-Path $Dir "config.yaml")) -or (Test-Path (Join-Path $Dir "data\logsentinel.db"))) {
+        return "native"
+    }
+
+    if ((Test-Path (Join-Path $Dir "docker-compose.yml")) -and (Test-DockerDaemon)) {
+        return "docker"
+    }
+
+    return "native"
 }
 
-# Native venv upgrade
-Write-Host "`n[1/5] Stopping any running RocketLogAI processes..." -ForegroundColor Yellow
-Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*logsentinel*" -or $_.CommandLine -like "*logsentinel*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+function Copy-UpgradeFiles {
+    param([string]$Dest)
 
-$VenvDir = Join-Path $TargetDir ".venv"
-if (-not (Test-Path $VenvDir)) {
-    Write-Host "Looking for venv..." -ForegroundColor Yellow
-    $candidates = @($TargetDir, (Join-Path $TargetDir ".."), "D:\logsentinel", "$HOME\logsentinel")
-    foreach ($c in $candidates) {
-        $test = Join-Path $c ".venv"
-        if (Test-Path $test) {
-            $VenvDir = $test
-            $TargetDir = $c
-            Write-Host "Found venv at $VenvDir" -ForegroundColor Green
-            break
+    $dirs = @("logsentinel", "templates", "scripts", "helm", "tests")
+    foreach ($d in $dirs) {
+        $src = Join-Path $SourceRoot $d
+        if (Test-Path $src) {
+            robocopy $src (Join-Path $Dest $d) /E /NFL /NDL /NJH /NJS /XD __pycache__ .pytest_cache | Out-Null
         }
     }
+
+    $files = @("pyproject.toml", "requirements.txt", "example-config.yaml", "Dockerfile", "docker-compose.yml", "INSTALL.md", "README.md")
+    foreach ($f in $files) {
+        $src = Join-Path $SourceRoot $f
+        if (Test-Path $src) {
+            Copy-Item $src -Destination $Dest -Force
+        }
+    }
+
+    Get-ChildItem -Path $Dest -Recurse -Include __pycache__ -Directory -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $Dest -Recurse -Include *.pyc -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
-if (-not (Test-Path $VenvDir)) {
-    Write-Host "ERROR: Could not locate .venv under $TargetDir" -ForegroundColor Red
-    Write-Host "Activate your virtualenv manually and run: pip install -e `".[web]`" --upgrade" -ForegroundColor Yellow
-    exit 1
+function Stop-RocketLogAIProcesses {
+    Get-Process -Name python, pythonw -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+            if ($cmd -match "logsentinel") {
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+    }
 }
 
-Write-Host "`n[2/5] Copying updated code..." -ForegroundColor Yellow
-robocopy "$SourceRoot\logsentinel" "$TargetDir\logsentinel" /E /NFL /NDL /NJH /NJS | Out-Null
-robocopy "$SourceRoot\templates" "$TargetDir\templates" /E /NFL /NDL /NJH /NJS | Out-Null
-Copy-Item "$SourceRoot\pyproject.toml" -Destination $TargetDir -Force -ErrorAction SilentlyContinue
-Copy-Item "$SourceRoot\requirements.txt" -Destination $TargetDir -Force -ErrorAction SilentlyContinue
-Copy-Item "$SourceRoot\example-config.yaml" -Destination $TargetDir -Force -ErrorAction SilentlyContinue
-robocopy "$SourceRoot\scripts" "$TargetDir\scripts" /E /NFL /NDL /NJH /NJS | Out-Null
+function Ensure-Venv {
+    param([string]$Dir)
 
-# Clean pycache
-Get-ChildItem -Path $TargetDir -Recurse -Include __pycache__ -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-Get-ChildItem -Path $TargetDir -Recurse -Include *.pyc -File | Remove-Item -Force -ErrorAction SilentlyContinue
+    $venv = Join-Path $Dir ".venv"
+    if (Test-Path (Join-Path $venv "Scripts\python.exe")) {
+        return $venv
+    }
 
-Write-Host "`n[3/5] Activating venv and upgrading package..." -ForegroundColor Yellow
-. "$VenvDir\Scripts\Activate.ps1"
+    Write-Host "No .venv found — creating one (recommended for upgrades)..." -ForegroundColor Yellow
+    python -m venv $venv
+    if (-not (Test-Path (Join-Path $venv "Scripts\python.exe"))) {
+        throw "Failed to create virtual environment at $venv"
+    }
+    return $venv
+}
 
-pip install --upgrade pip setuptools wheel
-Set-Location $TargetDir
-pip install -e ".[web]" --upgrade
+function Install-NativePackage {
+    param([string]$Dir)
 
-# Common web deps
-pip install fastapi uvicorn[standard] jinja2 itsdangerous bcrypt pyotp qrcode rich click pyyaml openai geoip2 requests ldap3 python-multipart --quiet 2>$null
+    $venv = Ensure-Venv -Dir $Dir
+    $python = Join-Path $venv "Scripts\python.exe"
 
-Write-Host "`n[4/5] Updating launcher scripts..." -ForegroundColor Yellow
+    Write-Host "Upgrading pip and installing RocketLogAI v2 extras..." -ForegroundColor Yellow
+    & $python -m pip install --upgrade pip setuptools wheel
+    Set-Location $Dir
+    & $python -m pip install -e ".[web,v2,ai]" --upgrade
+    & $python -m pip install open-interpreter cryptography --upgrade 2>$null
 
-@"
+    "native" | Out-File -Encoding ascii -FilePath (Join-Path $Dir ".install-type") -Force
+
+    @"
 @echo off
 cd /d %~dp0
 call .venv\Scripts\activate.bat
@@ -122,22 +181,81 @@ echo.
 echo Starting RocketLogAI...
 logsentinel run --web
 pause
-"@ | Out-File -Encoding ASCII -FilePath "$TargetDir\start-rocketlogai.bat" -Force
+"@ | Out-File -Encoding ASCII -FilePath (Join-Path $Dir "start-rocketlogai.bat") -Force
 
-@"
+    @"
 Set-Location `$PSScriptRoot
 . .\.venv\Scripts\Activate.ps1
 logsentinel run --web
-"@ | Out-File -Encoding UTF8 -FilePath "$TargetDir\start-rocketlogai.ps1" -Force
+"@ | Out-File -Encoding UTF8 -FilePath (Join-Path $Dir "start-rocketlogai.ps1") -Force
+}
 
-Write-Host "`n[5/5] Restart guidance..." -ForegroundColor Yellow
-Write-Host "If you run RocketLogAI as a scheduled task or service, restart it now."
-Write-Host "Or run: cd $TargetDir ; .\start-rocketlogai.ps1"
+# --- Detect install type ---
+if ([string]::IsNullOrWhiteSpace($InstallType)) {
+    $InstallType = Get-DetectedInstallType -Dir $TargetDir
+}
+
+Write-Host "[detected] Install type: $InstallType" -ForegroundColor Yellow
+
+if ($InstallType -eq "docker") {
+    if (-not (Test-DockerDaemon)) {
+        Write-Host "ERROR: Docker install detected but Docker daemon is not running." -ForegroundColor Red
+        Write-Host "Start Docker Desktop, or re-run with -InstallType native if this is a Python install." -ForegroundColor Yellow
+        exit 1
+    }
+
+    Write-Host "`n[1/3] Stopping Docker service..." -ForegroundColor Yellow
+    Push-Location $TargetDir
+    docker compose down
+    if ($LASTEXITCODE -ne 0) { throw "docker compose down failed" }
+
+    Write-Host "`n[2/3] Copying updated files..." -ForegroundColor Yellow
+    Copy-UpgradeFiles -Dest $TargetDir
+    "docker" | Out-File -Encoding ascii -FilePath (Join-Path $TargetDir ".install-type") -Force
+
+    Write-Host "`n[3/3] Rebuilding and restarting container..." -ForegroundColor Yellow
+    docker compose build --no-cache
+    if ($LASTEXITCODE -ne 0) { throw "docker compose build failed" }
+    docker compose up -d
+    if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
+    Pop-Location
+
+    Write-Host "`nDocker upgrade complete!" -ForegroundColor Green
+} else {
+    Write-Host "`n[1/4] Stopping running RocketLogAI processes..." -ForegroundColor Yellow
+    Stop-RocketLogAIProcesses
+
+    Write-Host "`n[2/4] Copying updated code..." -ForegroundColor Yellow
+    Copy-UpgradeFiles -Dest $TargetDir
+
+    Write-Host "`n[3/4] Installing/upgrading Python package in .venv..." -ForegroundColor Yellow
+    Install-NativePackage -Dir $TargetDir
+
+    Write-Host "`n[4/4] Verifying installation..." -ForegroundColor Yellow
+    $venvPython = Join-Path $TargetDir ".venv\Scripts\python.exe"
+    & $venvPython -c "import logsentinel; print('RocketLogAI', logsentinel.__version__)"
+    if ($LASTEXITCODE -ne 0) { throw "Post-upgrade import check failed" }
+
+    Write-Host "`nNative upgrade complete!" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "IMPORTANT: Use the install directory launcher (not global pip):" -ForegroundColor Yellow
+    Write-Host "  cd $TargetDir"
+    Write-Host "  .\start-rocketlogai.ps1"
+    Write-Host ""
+    Write-Host "Or activate the venv first:"
+    Write-Host "  .\.venv\Scripts\Activate.ps1"
+    Write-Host "  logsentinel run --web"
+}
+
+if ($Fix) {
+    Write-Host "`nRunning health check repair..." -ForegroundColor Yellow
+    $hc = Join-Path $SourceRoot "scripts\healthcheck.py"
+    if (Test-Path $hc) {
+        python $hc $TargetDir --fix
+    }
+}
 
 Write-Host ""
-Write-Host "✅ Upgrade complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "Your config.yaml and data\ folder were preserved."
-Write-Host "New features (Daily Briefing, Ollama fixes, improved LLM config UI) are included."
-Write-Host "Open the web UI at http://localhost:8787 and verify your LLM connection still works."
+Write-Host "Your config.yaml and data\ folder were preserved." -ForegroundColor Green
+Write-Host "Open http://localhost:8787 and verify the dashboard." -ForegroundColor Green
 Write-Host ""
