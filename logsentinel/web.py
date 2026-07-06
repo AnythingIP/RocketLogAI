@@ -1456,6 +1456,77 @@ async def assistant_page(request: Request, user: str = Depends(require_login)):
     )
 
 
+def _operator_keywords_match(question: str) -> bool:
+    q = question.lower().strip()
+    operator_keywords = [
+        "ping", "nmap", "traceroute", "ssh ", "run on ", "deploy", "install on ",
+        "show ips", "devices using port", "backup config", "reboot ", "update on ",
+    ]
+    if any(kw in q for kw in operator_keywords):
+        return True
+    return len(q.split()) > 4 and any(w in q for w in ("the ", "these ", "my ", "local network"))
+
+
+def _try_fast_operator_plan(question: str) -> dict | None:
+    """Deterministic plans for simple read-only commands (no LLM required)."""
+    import platform
+    import re
+
+    q = question.strip()
+    ql = q.lower()
+
+    ping_match = re.search(
+        r"\bping\s+(?:the\s+)?([\d.]+|[a-z0-9][\w.-]*)",
+        ql,
+        re.I,
+    )
+    if ping_match:
+        host = ping_match.group(1).rstrip(".")
+        if platform.system() == "Windows":
+            cmd = f"ping -n 4 {host}"
+        else:
+            cmd = f"ping -c 4 {host}"
+        return {
+            "is_operator_command": True,
+            "is_actionable": True,
+            "intent": "ping",
+            "explanation": (
+                f"Ping {host} from the RocketLogAI server ({platform.system()}) "
+                "to verify reachability. Review the plan, then click Confirm & Execute."
+            ),
+            "targets": [{"ip": host, "name": host, "os_guess": "unknown"}],
+            "proposed_steps": [
+                {
+                    "step": 1,
+                    "description": f"Ping {host}",
+                    "command": cmd,
+                    "command_or_action": cmd,
+                    "os": "host",
+                    "risk": "low",
+                }
+            ],
+            "requires_confirmation": True,
+            "backup_recommended": False,
+            "rollback_notes": "Read-only ICMP test; nothing to roll back.",
+            "safety_notes": "Runs ping on the RocketLogAI host only (not remote devices unless SSH is used).",
+        }
+
+    if ql in ("yes", "y", "ok", "okay", "confirm", "do it", "go ahead"):
+        return None
+
+    return None
+
+
+def _normalize_operator_plan_response(plan: dict) -> dict:
+    """Unify Phase 2/3 plan shapes for the assistant UI."""
+    for step in plan.get("proposed_steps") or []:
+        if not step.get("command") and step.get("command_or_action"):
+            step["command"] = step["command_or_action"]
+    if plan.get("is_actionable") and not plan.get("is_operator_command"):
+        plan["is_operator_command"] = True
+    return plan
+
+
 @app.post("/api/assistant/ask")
 async def api_assistant_ask(request: Request, user: str = Depends(require_login)):
     if _cfg is None:
@@ -1463,31 +1534,50 @@ async def api_assistant_ask(request: Request, user: str = Depends(require_login)
 
     data = await request.json()
     question = (data.get("question") or "").strip()
+    history = data.get("history") or []
     if not question:
         return {"answer": "Please ask a question about using RocketLogAI."}
 
-    # Phase 3: Always try the powerful natural-language controller first for any non-trivial request.
-    # It understands high-level requests (HA control, GitHub, deploy, PowerPoint, anomaly analysis, etc.)
-    # and produces rich Action Plans with full safety.
+    looks_like_operator = _operator_keywords_match(question)
+
+    # Fast path: ping/traceroute-style commands work without any LLM backend.
+    fast_plan = _try_fast_operator_plan(question)
+    if fast_plan:
+        fast_plan = _normalize_operator_plan_response(fast_plan)
+        return {
+            "mode": "operator_plan",
+            "plan": fast_plan,
+            "answer": fast_plan.get("explanation", "Proposed action plan ready for your review."),
+            "requires_confirmation": fast_plan.get("requires_confirmation", True),
+        }
+
+    # Phase 3: powerful natural-language controller for complex requests.
     try:
         from .llm import get_llm_client
         llm = get_llm_client(_cfg.llm) if _cfg and _cfg.llm else None
         if llm and _storage:
             controller = get_ai_assistant_controller(_storage, llm, _cfg)
-            powerful_response = await controller.process_natural_request(question, user)
-            # The controller already returns the right shape (mode: "action_plan" or "text")
-            if powerful_response.get("mode") in ("action_plan", "text"):
+            powerful_response = await controller.process_natural_request(
+                question, user, conversation_history=history
+            )
+            if powerful_response.get("mode") == "action_plan":
+                plan = _normalize_operator_plan_response(powerful_response.get("plan") or {})
+                return {
+                    "mode": "operator_plan",
+                    "plan": plan,
+                    "answer": powerful_response.get("answer", "Proposed action plan ready for your review."),
+                    "requires_confirmation": powerful_response.get("requires_confirmation", True),
+                }
+            if powerful_response.get("mode") == "text" and not looks_like_operator:
                 return powerful_response
     except Exception as e:
         logger.warning(f"Phase 3 powerful controller failed, falling back: {e}")
 
-    # Legacy Phase 2 operator path (kept for backward compatibility on simple network commands)
-    operator_keywords = ["ping", "nmap", "traceroute", "ssh ", "run on ", "deploy", "install on ", "show ips", "devices using port", "backup config", "reboot ", "update on "]
-    looks_like_operator = any(kw in question.lower() for kw in operator_keywords) or len(question.split()) > 4 and any(w in question.lower() for w in ["the ", "these ", "my ", "local network"])
-
+    # Legacy Phase 2 operator path (LLM-backed plans for network/device commands)
     if looks_like_operator:
         plan = await _handle_operator_command(question, user)
         if plan.get("is_operator_command"):
+            plan = _normalize_operator_plan_response(plan)
             return {
                 "mode": "operator_plan",
                 "plan": plan,
@@ -1827,7 +1917,7 @@ async def _execute_operator_plan(plan: dict, user: str, confirmed: bool = False)
     )
 
     for step in steps:
-        cmd = step.get("command", "")
+        cmd = step.get("command") or step.get("command_or_action") or ""
         desc = step.get("description", "")
         target_ip = None
         cred_name = None

@@ -22,7 +22,7 @@
                     Send
                 </button>
             </div>
-            <div class="text-[10px] text-zinc-500 mt-1">Operator commands always produce a reviewable plan. Read it, then click Confirm to run.</div>
+            <div class="text-[10px] text-zinc-500 mt-1">Operator commands always produce a reviewable plan. Read it, then click <strong>Confirm &amp; Execute</strong> (typing "yes" in chat does not run the plan).</div>
         </div>
 
         <!-- Conversation / Results area -->
@@ -102,6 +102,7 @@
 
 <script>
 let currentOperatorPlan = null;
+let chatHistory = [];
 
 function appendChatMessage(role, content, extraClass = '') {
     const chat = document.getElementById('assistant-chat');
@@ -120,6 +121,7 @@ async function askAssistant() {
 
     const chat = document.getElementById('assistant-chat');
     appendChatMessage('user', q);
+    chatHistory.push({ role: 'user', content: q });
     input.value = '';
 
     const thinking = appendChatMessage('assistant', 'Thinking...');
@@ -128,22 +130,26 @@ async function askAssistant() {
         const res = await fetch('/api/assistant/ask', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ question: q })
+            body: JSON.stringify({ question: q, history: chatHistory.slice(-8) })
         });
         const data = await res.json();
 
         thinking.remove();
 
-        if (data.mode === 'operator_plan' && data.plan && data.plan.is_operator_command) {
-            // Rich operator plan path (Phase 2)
-            currentOperatorPlan = data.plan;
-            appendChatMessage('assistant', data.answer || 'Here is a proposed plan for your review.');
+        const plan = data.plan || null;
+        const hasOperatorPlan = plan && (plan.is_operator_command || plan.is_actionable || (plan.proposed_steps || []).length > 0);
+        if ((data.mode === 'operator_plan' || data.mode === 'action_plan') && hasOperatorPlan) {
+            currentOperatorPlan = plan;
+            const answer = data.answer || 'Here is a proposed plan for your review.';
+            appendChatMessage('assistant', answer);
+            chatHistory.push({ role: 'assistant', content: answer });
 
-            // Show the beautiful review card
-            renderOperatorPlanCard(data.plan);
+            renderOperatorPlanCard(plan);
+            document.getElementById('suggest-section').classList.add('hidden');
         } else {
-            // Normal help answer
-            appendChatMessage('assistant', data.answer || 'No response.');
+            const answer = data.answer || 'No response.';
+            appendChatMessage('assistant', answer);
+            chatHistory.push({ role: 'assistant', content: answer });
             document.getElementById('suggest-section').classList.remove('hidden');
             const sug = document.getElementById('suggestion-text');
             if (sug) sug.value = `Question the assistant couldn't answer well: "${q}"\n\nSuggested improvement:`;
@@ -176,9 +182,10 @@ function renderOperatorPlanCard(plan) {
     (plan.proposed_steps || []).forEach((s, i) => {
         const div = document.createElement('div');
         div.className = 'bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs';
+        const cmd = s.command || s.command_or_action || '';
         div.innerHTML = `
             <div class="font-mono text-emerald-400">${i+1}. ${s.description || ''}</div>
-            <div class="font-mono mt-1 text-zinc-300">${s.command || ''}</div>
+            <div class="font-mono mt-1 text-zinc-300">${cmd}</div>
             <div class="text-[10px] text-zinc-500 mt-1">OS: ${s.os || 'any'} • Risk: ${s.risk || 'low'}</div>
         `;
         stepsEl.appendChild(div);
