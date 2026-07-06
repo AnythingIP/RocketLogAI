@@ -2,6 +2,14 @@
 
 Thanks for your interest in improving RocketLogAI!
 
+## Legal
+
+By contributing (issues, PRs, docs, code), you agree that your contributions are
+licensed under the project's [MIT License](LICENSE). You represent that you have the
+right to submit them. The project is hobby/educational software — see
+[DISCLAIMER.md](DISCLAIMER.md). New features that run commands, change systems, or
+call external APIs should stay **off by default** and require explicit user confirmation.
+
 **Docs:** [anythingip.github.io/RocketLogAI](https://anythingip.github.io/RocketLogAI/) · [Architecture](docs/architecture.md) · [Install guide](INSTALL.md)
 
 ## Quick Start for Contributors

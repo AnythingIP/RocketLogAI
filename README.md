@@ -1,6 +1,6 @@
 # RocketLogAI v2.0 (by AnythingIP)
 
-**Production-ready local-first security platform** — syslog monitoring, AI threat detection, safe remediation, WAF/AV shield, and mobile assistant. MIT licensed.
+**Local-first security platform (hobby / homelab)** — syslog monitoring, AI threat detection, guarded remediation, WAF/AV shield, and mobile assistant. [MIT licensed](LICENSE) · [Disclaimer](DISCLAIMER.md) — no warranty, use at your own risk.
 
 **Website:** [anythingip.github.io/RocketLogAI](https://anythingip.github.io/RocketLogAI/) · **Latest release:** [v2.0.0](https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0)
 
@@ -360,4 +360,10 @@ Run `python -m py_compile logsentinel/*.py logsentinel/ai_assistant/*.py` after 
 
 ## Disclaimer
 
-This is a powerful security tool. Automated analysis of production logs is inherently noisy. Never blindly trust AI output for security decisions. Always have a human in the loop, especially before enabling any remediation features. Advanced auth features (LDAP/Entra) require careful service account / App Registration permission scoping.
+**Hobby / educational software — use at your own risk.**
+
+This project is shared **for fun** under the [MIT License](LICENSE). It is provided **"AS IS"** with **no warranty** and **no liability** for AnythingIP or contributors, within applicable law. You are solely responsible for deployment, security, compliance, backups, and any damage or data loss.
+
+This is **not** professional security, legal, or IT advice. AI and automation output may be wrong or unsafe. Never blindly trust detections or operator plans. Always keep a human in the loop — especially before enabling remediation, remote commands, or production use. Test in a lab first.
+
+Full legal terms: **[DISCLAIMER.md](DISCLAIMER.md)** · Security reports: **[SECURITY.md](SECURITY.md)**

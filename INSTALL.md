@@ -1,6 +1,6 @@
 # RocketLogAI v2.0 Installation Guide
 
-RocketLogAI v2 is a production-ready, local-first security platform. It ingests syslog, uses your own LLM for analysis, and ships a full ecosystem:
+RocketLogAI v2 is a local-first security platform for homelabs and learning (see [DISCLAIMER.md](DISCLAIMER.md) — no warranty, use at your own risk). It ingests syslog, uses your own LLM for analysis, and ships a full ecosystem:
 
 - **RocketLogAI** — Core monitoring, AI assistant, devices, daily briefing
 - **RocketRemediate** — Safe remediation (dry-run, approval, backup, rollback)

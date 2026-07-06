@@ -1,5 +1,9 @@
 # Security Policy
 
+> **Legal:** This project is provided AS IS under the [MIT License](LICENSE).
+> See [DISCLAIMER.md](DISCLAIMER.md). Reporting a vulnerability does not create a
+> support contract, SLA, or bounty unless we agree in writing.
+
 ## Supported Versions
 
 We aim to support the latest release with security updates.
@@ -31,3 +35,10 @@ Out of scope (for now):
 - Social engineering of operators
 
 Thank you for helping keep RocketLogAI (and the environments that rely on it) safe.
+
+## Author liability
+
+Security research and responsible disclosure are appreciated. Authors and contributors
+are not liable for how you use information from this repository or for incidents on
+systems where you chose to deploy the software. You are responsible for your own
+environment and for validating any fix before production use.

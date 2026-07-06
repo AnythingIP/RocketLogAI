@@ -30,3 +30,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Additional context**
 Add any other context about the problem here (log excerpts with sensitive data removed, config snippets without secrets, etc.).
+
+---
+
+*RocketLogAI is MIT-licensed hobby software with no warranty. See [DISCLAIMER.md](../../DISCLAIMER.md). Support is best-effort via GitHub issues.*
