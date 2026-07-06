@@ -59,3 +59,10 @@ dist/RocketLogAI-*-Installer/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Repo junk (never commit)
+RocketLogAI_Ver1.0/
+COMMIT_MESSAGE.md
+errors.txt
+Screenshot*.png
+Screenshot*.jpg

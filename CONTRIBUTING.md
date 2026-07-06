@@ -17,7 +17,7 @@ call external APIs should stay **off by default** and require explicit user conf
 1. Fork the repo and clone your fork.
 2. Create a virtualenv and `pip install -e ".[web,v2,dev]"` (add `ai` for the conversational operator).
 3. Copy `example-config.yaml` to `config.yaml` and point it at a local LLM (LM Studio / Ollama recommended for development).
-4. Run `logsentinel run --web` and send some test logs (see README or USAGE.md).
+4. Run `logsentinel run --web` and send some test logs (see README or [docs/USAGE.md](docs/USAGE.md)).
 5. Run `pytest tests/ -v` before opening a PR (CI runs on Python 3.10–3.12).
 
 ## What We're Looking For
@@ -36,7 +36,7 @@ call external APIs should stay **off by default** and require explicit user conf
 
 - Keep changes focused.
 - For security-sensitive changes, open a draft PR or contact us privately first.
-- Update relevant docs (README, USAGE.md, or the in-app Assistant knowledge if it makes sense).
+- Update relevant docs (README, [docs/USAGE.md](docs/USAGE.md), or the in-app Assistant knowledge if it makes sense).
 - If your change affects remediation scripts, make sure they remain heavily commented and safe-by-default.
 
 ## Code Style
