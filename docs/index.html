@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RocketLogAI • by AnythingIP</title>
-    <meta name="description" content="RocketLogAI v2.0 — local-first security platform with AI brain, RocketRemediate, RocketShield, and mobile API. Your LLM, your data, zero cloud. MIT licensed.">
+    <meta name="description" content="RocketLogAI v2.0 — local-first security platform for homelabs. AI brain, RocketRemediate, RocketShield, mobile API. Your LLM, your data, zero cloud. MIT licensed, no warranty.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap">
     <style>
@@ -155,8 +155,8 @@
         <div class="max-w-6xl mx-auto px-6 py-2 flex items-center justify-between text-xs">
             <div class="flex items-center gap-2 text-emerald-400">
                 <span class="inline-block w-2 h-2 bg-emerald-400 rounded-full"></span>
-                <span class="font-medium">v2.0 Production Release</span>
-                <span class="text-zinc-500">— MIT licensed · CI green · <a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline hover:text-white">Latest: v2.0.0</a></span>
+                <span class="font-medium">v2.0 Release</span>
+                <span class="text-zinc-500">— MIT · no warranty · <a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline hover:text-white">v2.0.0</a> · <a href="https://github.com/AnythingIP/RocketLogAI/blob/main/DISCLAIMER.md" class="underline hover:text-white">Disclaimer</a></span>
             </div>
             <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" class="font-medium flex items-center gap-1 hover:text-white transition text-emerald-400">
                 Star <span class="hidden sm:inline">AnythingIP/RocketLogAI</span> on GitHub →
@@ -178,8 +178,8 @@
         </h1>
         
         <p class="max-w-2xl mx-auto text-xl text-zinc-400 mb-8">
-            RocketLogAI v2 is a <span class="text-white">production security platform</span> — syslog monitoring, unified AI brain, 
-            safe remediation, WAF/AV shield, and mobile API. Uses <span class="text-white">your own offline LLM</span> and keeps every byte on your hardware.
+            RocketLogAI v2 is a <span class="text-white">local-first security platform</span> for homelabs and learning — syslog monitoring, unified AI brain, 
+            guarded remediation, WAF/AV shield, and mobile API. Uses <span class="text-white">your own offline LLM</span> and keeps every byte on your hardware. <span class="text-zinc-500 text-base block mt-2">Hobby software — provided AS IS. <a href="https://github.com/AnythingIP/RocketLogAI/blob/main/DISCLAIMER.md" class="underline hover:text-zinc-300">Read the disclaimer</a>.</span>
         </p>
         
         <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -197,7 +197,7 @@
         <div class="mt-6 text-xs text-zinc-500 flex items-center justify-center gap-4">
             <div>Docker • Python • One binary feel</div>
             <div>•</div>
-            <div><a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline hover:text-white text-emerald-400">v2.0.0 Production Ecosystem</a> • MIT • <a href="architecture.html" class="underline hover:text-white">Architecture</a></div>
+            <div><a href="https://github.com/AnythingIP/RocketLogAI/releases/tag/v2.0.0" class="underline hover:text-white text-emerald-400">v2.0.0 Ecosystem</a> • MIT • <a href="architecture.html" class="underline hover:text-white">Architecture</a></div>
         </div>
     </div>
 
@@ -621,10 +621,12 @@ logsentinel run --web
     <!-- Footer / CTA -->
     <div class="border-t border-zinc-800 py-12">
         <div class="max-w-5xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm">
-            <div class="text-zinc-500">
-                © AnythingIP • RocketLogAI is open source under the MIT license.
+            <div class="text-zinc-500 max-w-md leading-relaxed">
+                © AnythingIP • MIT licensed · provided <span class="text-zinc-400">AS IS</span>, no warranty.<br>
+                <span class="text-zinc-600 text-xs">Hobby/educational software — you are responsible for how you deploy it.</span>
             </div>
-            <div class="flex items-center gap-6">
+            <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+                <a href="https://github.com/AnythingIP/RocketLogAI/blob/main/DISCLAIMER.md" target="_blank" class="hover:text-white">Disclaimer</a>
                 <a href="architecture.html" class="hover:text-white">Architecture</a>
                 <a href="https://github.com/AnythingIP/RocketLogAI/blob/main/INSTALL.md" target="_blank" class="hover:text-white">Install Guide</a>
                 <a href="https://github.com/AnythingIP/RocketLogAI" target="_blank" id="footer-github" class="hover:text-white">GitHub</a>
