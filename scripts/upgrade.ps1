@@ -173,21 +173,23 @@ function Install-NativePackage {
 
     "native" | Out-File -Encoding ascii -FilePath (Join-Path $Dir ".install-type") -Force
 
-    @"
-@echo off
-cd /d %~dp0
-call .venv\Scripts\activate.bat
-echo.
-echo Starting RocketLogAI...
-logsentinel run --web
-pause
-"@ | Out-File -Encoding ASCII -FilePath (Join-Path $Dir "start-rocketlogai.bat") -Force
+    $batLines = @(
+        '@echo off'
+        'cd /d %~dp0'
+        'call .venv\Scripts\activate.bat'
+        'echo.'
+        'echo Starting RocketLogAI...'
+        'logsentinel run --web'
+        'pause'
+    )
+    $batLines -join "`r`n" | Out-File -Encoding ASCII -FilePath (Join-Path $Dir "start-rocketlogai.bat") -Force
 
-    @"
-Set-Location `$PSScriptRoot
-. .\.venv\Scripts\Activate.ps1
-logsentinel run --web
-"@ | Out-File -Encoding UTF8 -FilePath (Join-Path $Dir "start-rocketlogai.ps1") -Force
+    $ps1Lines = @(
+        'Set-Location $PSScriptRoot'
+        '. .\.venv\Scripts\Activate.ps1'
+        'logsentinel run --web'
+    )
+    $ps1Lines -join "`n" | Out-File -Encoding UTF8 -FilePath (Join-Path $Dir "start-rocketlogai.ps1") -Force
 }
 
 # --- Detect install type ---
@@ -233,7 +235,7 @@ if ($InstallType -eq "docker") {
 
     Write-Host "`n[4/4] Verifying installation..." -ForegroundColor Yellow
     $venvPython = Join-Path $TargetDir ".venv\Scripts\python.exe"
-    & $venvPython -c "import logsentinel; print('RocketLogAI', logsentinel.__version__)"
+    & $venvPython -c 'import logsentinel; print("RocketLogAI", logsentinel.__version__)'
     if ($LASTEXITCODE -ne 0) { throw "Post-upgrade import check failed" }
 
     Write-Host "`nNative upgrade complete!" -ForegroundColor Green
