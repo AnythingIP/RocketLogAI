@@ -3,11 +3,13 @@
 
 $ErrorActionPreference = "Stop"
 
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $ScriptDir 'ps-windows.ps1')
+
 Write-Host "RocketLogAI Installer for Windows" -ForegroundColor Cyan
 Write-Host "=====================================" -ForegroundColor Cyan
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SourceRoot = Split-Path -Parent $ScriptDir   # RocketLogAI repo root
+$SourceRoot = Split-Path -Parent $ScriptDir
 
 $InstallDir = "D:\logsentinel"
 $InstallDir = Read-Host "Enter target directory (default D:\logsentinel)"
@@ -22,31 +24,34 @@ if (-not (Test-Path $selector)) {
     exit 1
 }
 
-$runner = if (Get-Command python -ErrorAction SilentlyContinue) { @("python") }
-          elseif (Get-Command py -ErrorAction SilentlyContinue) { @("py", "-3.12") }
-          else { $null }
-
-if (-not $runner) {
-    Write-Host "Python 3.10+ not found. Install Python 3.12:" -ForegroundColor Red
-    Write-Host "https://www.python.org/downloads/release/python-3120/" -ForegroundColor Cyan
+try {
+    $pyLauncher = Invoke-SelectPythonLauncher -SelectorScript $selector -Ask
+}
+catch {
+    Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Host "Install Python 3.12: https://www.python.org/downloads/release/python-3120/" -ForegroundColor Cyan
     exit 1
 }
-
-$pyJson = & @runner $selector --ask
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Could not select Python interpreter." -ForegroundColor Red
-    exit 1
-}
-$pyInfo = $pyJson | ConvertFrom-Json
-$pyLauncher = @($pyInfo.command)
 
 if (Test-Path (Join-Path $InstallDir "config.yaml")) {
     Write-Host "`n[1.5/6] Existing install detected - backing up first..." -ForegroundColor Yellow
-    & @runner (Join-Path $ScriptDir "rla_backup.py") $InstallDir --label pre-install
+    $runner = Get-DefaultRunnerPython
+    Invoke-PythonLauncher -Launcher $runner -PythonArgs (Join-Path $ScriptDir "rla_backup.py"), $InstallDir, '--label', 'pre-install'
 }
 
 Write-Host "`n[2/6] Creating virtual environment..." -ForegroundColor Yellow
-& @pyLauncher -m venv "$InstallDir\.venv"
+$venvPath = Join-Path $InstallDir ".venv"
+try {
+    if (-not (Test-PythonLauncherWorks -Launcher $pyLauncher)) {
+        throw ('Selected Python launcher is not runnable: ' + ($pyLauncher -join ' '))
+    }
+    New-PythonVenv -Launcher $pyLauncher -VenvPath $venvPath | Out-Null
+}
+catch {
+    Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Python312InstallHelp
+    exit 1
+}
 . "$InstallDir\.venv\Scripts\Activate.ps1"
 
 Write-Host "`n[3/6] Copying RocketLogAI files..." -ForegroundColor Yellow
@@ -86,7 +91,8 @@ Set-Content -Path "$InstallDir\start-rocketlogai.ps1" -Value $ps1Content -Encodi
 Write-Host "`n[6/6] Cleaning install folder..." -ForegroundColor Yellow
 $cleanupPy = Join-Path $ScriptDir "rla_cleanup.py"
 if (Test-Path $cleanupPy) {
-    & @runner $cleanupPy $InstallDir --source $SourceRoot --fix
+    $runner = Get-DefaultRunnerPython
+    Invoke-PythonLauncher -Launcher $runner -PythonArgs $cleanupPy, $InstallDir, '--source', $SourceRoot, '--fix'
 }
 
 Write-Host ""

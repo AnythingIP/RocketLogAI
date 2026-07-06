@@ -139,15 +139,37 @@ def select_best(ask: bool = False) -> dict[str, Any] | None:
         try:
             pick = int(choice) - 1
             if 0 <= pick < len(interpreters):
-                return interpreters[pick]
+                selected = interpreters[pick]
+                if _run_probe(selected["command"]) is None:
+                    cmd = " ".join(selected["command"])
+                    print(f"ERROR: Python launcher failed: {cmd}", file=err)
+                    return None
+                return selected
         except ValueError:
             pass
         print("Invalid choice, using recommended interpreter.", file=err)
 
     for item in interpreters:
         if item["tag"] == RECOMMENDED_TAG:
-            return item
-    return interpreters[0]
+            selected = item
+            break
+    else:
+        selected = interpreters[0]
+
+    if _run_probe(selected["command"]) is None:
+        cmd = " ".join(selected["command"])
+        print(
+            f"ERROR: Python launcher failed: {cmd}",
+            file=sys.stderr,
+        )
+        if selected["tag"] != RECOMMENDED_TAG:
+            print(
+                "Install Python 3.12 from https://www.python.org/downloads/release/python-3120/",
+                file=sys.stderr,
+            )
+        return None
+
+    return selected
 
 
 def main() -> int:

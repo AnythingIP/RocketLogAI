@@ -18,6 +18,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $ScriptDir 'ps-windows.ps1')
+
 function Show-Help {
     Write-Host "RocketLogAI Upgrade (Windows)"
     Write-Host ""
@@ -138,38 +141,6 @@ function Stop-RocketLogAIProcesses {
     }
 }
 
-function Get-RunnerPython {
-    if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
-    if (Get-Command py -ErrorAction SilentlyContinue) { return @("py", "-3.12") }
-    throw 'Python not found - install Python 3.12 from https://www.python.org/downloads/windows/'
-}
-
-function Invoke-SelectPython {
-    param([switch]$Ask)
-
-    $selector = Join-Path $SourceRoot "scripts\rla_python.py"
-    if (-not (Test-Path $selector)) {
-        throw "Missing scripts\rla_python.py"
-    }
-
-    $runner = Get-RunnerPython
-    $args = @($selector)
-    if ($Ask) { $args += "--ask" }
-
-    $json = if ($runner -is [array]) { & @runner @args } else { & $runner @args }
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not find Python 3.10+. Install Python 3.12 from python.org"
-    }
-
-    $info = $json | ConvertFrom-Json
-    $cmdText = $info.command -join ' '
-    Write-Host ('Selected Python ' + $info.version + ' (' + $cmdText + ')') -ForegroundColor Green
-    if (-not $info.ai_operator_full) {
-        Write-Host "  Note: AI Operator may be limited on this Python version." -ForegroundColor Yellow
-    }
-    return ,$info.command
-}
-
 function Invoke-InstallCleanup {
     param([string]$Dir)
 
@@ -180,13 +151,8 @@ function Invoke-InstallCleanup {
     }
 
     Write-Host "Cleaning install folder (remove junk, sync official layout)..." -ForegroundColor Yellow
-    $runner = Get-RunnerPython
-    if ($runner -is [array]) {
-        & @runner $cleanupPy $Dir --source $SourceRoot --fix
-    }
-    else {
-        & $runner $cleanupPy $Dir --source $SourceRoot --fix
-    }
+    $runner = Get-DefaultRunnerPython
+    Invoke-PythonLauncher -Launcher $runner -PythonArgs $cleanupPy, $Dir, '--source', $SourceRoot, '--fix'
 }
 
 function Invoke-InstallBackup {
@@ -197,13 +163,8 @@ function Invoke-InstallBackup {
         Write-Host "WARNING: backup script not found, skipping backup." -ForegroundColor Yellow
         return
     }
-    $runner = Get-RunnerPython
-    if ($runner -is [array]) {
-        & @runner $backupPy $Dir
-    }
-    else {
-        & $runner $backupPy $Dir
-    }
+    $runner = Get-DefaultRunnerPython
+    Invoke-PythonLauncher -Launcher $runner -PythonArgs $backupPy, $Dir
 }
 
 function Get-VenvPythonVersion {
@@ -216,6 +177,7 @@ function Get-VenvPythonVersion {
 function Ensure-Venv {
     param([string]$Dir)
 
+    $script:RequirePython312 = $false
     $venv = Join-Path $Dir ".venv"
     $pythonExe = Join-Path $venv "Scripts\python.exe"
 
@@ -225,10 +187,7 @@ function Ensure-Venv {
 
         if ($needsRecreate) {
             $selector = Join-Path $SourceRoot "scripts\rla_python.py"
-            $runner = Get-RunnerPython
-            $has312 = $false
-            if ($runner -is [array]) { & @runner $selector --has 3.12 1>$null 2>$null } else { & $runner $selector --has 3.12 1>$null 2>$null }
-            if ($LASTEXITCODE -eq 0) { $has312 = $true }
+            $has312 = Test-PythonTagAvailable -SelectorScript $selector -Tag '3.12'
 
             if ($has312) {
                 $prompt = "Recreate .venv with Python 3.12 (recommended for full AI Operator)? [Y/n]"
@@ -242,12 +201,17 @@ function Ensure-Venv {
                 if ($ans -eq "" -or $ans -eq "y" -or $ans -eq "Y") {
                     Write-Host "Removing old .venv and creating Python 3.12 environment..." -ForegroundColor Yellow
                     Remove-Item -Recurse -Force $venv
+                    $script:RequirePython312 = $true
                 }
                 else {
                     return $venv
                 }
             }
-            elseif (-not $RecreateVenv) {
+            elseif ($RecreateVenv) {
+                Write-Python312InstallHelp
+                throw 'Python 3.12 required for -RecreateVenv but py -3.12 is not installed'
+            }
+            else {
                 Write-Host ("Keeping existing Python " + $ver + " .venv (AI Operator may be limited).") -ForegroundColor Yellow
                 return $venv
             }
@@ -258,10 +222,26 @@ function Ensure-Venv {
     }
 
     Write-Host "Creating .venv (default: Python 3.12 if installed)..." -ForegroundColor Yellow
-    $pyCmd = Invoke-SelectPython
-    & @pyCmd -m venv $venv
-    if (-not (Test-Path $pythonExe)) {
-        throw ("Failed to create virtual environment at " + $venv)
+    $selector = Join-Path $SourceRoot "scripts\rla_python.py"
+    if (-not (Test-Path $selector)) {
+        throw 'Missing scripts\rla_python.py'
+    }
+
+    $requireTag = ''
+    if ($script:RequirePython312) {
+        $requireTag = '3.12'
+    }
+
+    try {
+        $pyCmd = Invoke-SelectPythonLauncher -SelectorScript $selector -RequireTag $requireTag
+        New-PythonVenv -Launcher $pyCmd -VenvPath $venv | Out-Null
+    }
+    catch {
+        Write-Host ("ERROR: " + $_.Exception.Message) -ForegroundColor Red
+        if ($requireTag -eq '3.12') {
+            Write-Python312InstallHelp
+        }
+        throw
     }
     return $venv
 }
@@ -351,7 +331,6 @@ if ($Help -or $TargetDir -eq "-h" -or $TargetDir -eq "--help" -or $TargetDir -eq
 Write-Host "RocketLogAI Upgrade (Windows)" -ForegroundColor Cyan
 Write-Host "====================================" -ForegroundColor Cyan
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SourceRoot = Split-Path -Parent $ScriptDir
 
 if ([string]::IsNullOrWhiteSpace($TargetDir)) {
@@ -444,7 +423,15 @@ else {
 
     Write-Host ""
     Write-Host "[3/5] Installing/upgrading Python package in .venv..." -ForegroundColor Yellow
-    Install-NativePackage -Dir $TargetDir
+    try {
+        Install-NativePackage -Dir $TargetDir
+    }
+    catch {
+        Write-Host ''
+        Write-Host ('Upgrade failed during Python setup: ' + $_.Exception.Message) -ForegroundColor Red
+        Write-Host 'If py -3.12 is missing, install Python 3.12 alongside 3.13, then re-run.' -ForegroundColor Yellow
+        exit 1
+    }
 
     Write-Host ""
     Write-Host "[4/5] Verifying installation..." -ForegroundColor Yellow
