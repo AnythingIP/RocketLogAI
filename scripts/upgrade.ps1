@@ -466,7 +466,16 @@ if ($Fix) {
     Write-Host "Running health check repair..." -ForegroundColor Yellow
     $hc = Join-Path $SourceRoot "scripts\healthcheck.py"
     if (Test-Path $hc) {
-        & python $hc $TargetDir --fix
+        $hcPython = Join-Path $TargetDir ".venv\Scripts\python.exe"
+        if (-not (Test-Path $hcPython)) {
+            try {
+                $hcPython = (Get-DefaultRunnerPython)[0]
+            }
+            catch {
+                $hcPython = "python"
+            }
+        }
+        & $hcPython $hc $TargetDir --fix
     }
 }
 

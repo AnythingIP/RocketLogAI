@@ -106,6 +106,21 @@ def resolve_runtime_python(install_dir: Path, install_type: str) -> Path:
     return Path(find_python())
 
 
+def python_version_label(python_exe: Path) -> str | None:
+    proc = _run(
+        [
+            str(python_exe),
+            "-c",
+            "import sys; "
+            "print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')",
+        ]
+    )
+    if proc.returncode != 0:
+        return None
+    label = (proc.stdout or "").strip()
+    return label or None
+
+
 def pip_install_editable(install_dir: Path, python_exe: Path) -> bool:
     proc = _run(
         [str(python_exe), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
@@ -252,14 +267,29 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
 
     print()
     print("[3] Python runtime")
-    if sys.version_info < (3, 10):
+    runtime = resolve_runtime_python(install_dir, install_type)
+    runtime_ver = python_version_label(runtime)
+    if runtime_ver:
+        major, minor, *_ = runtime_ver.split(".")
+        if int(major) < 3 or int(minor) < 10:
+            _fail(f"Python {runtime_ver} — need 3.10+")
+            issues.append("python:old")
+        else:
+            _ok(f"Python {runtime_ver}")
+    elif sys.version_info < (3, 10):
         _fail(f"Python {sys.version_info.major}.{sys.version_info.minor} — need 3.10+")
         issues.append("python:old")
     else:
         _ok(f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
-    runtime = resolve_runtime_python(install_dir, install_type)
     _ok(f"Runtime python: {runtime}")
+
+    checker = Path(sys.executable).resolve()
+    if checker != runtime.resolve():
+        checker_ver = (
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        )
+        _ok(f"Health check runner: Python {checker_ver} (not used for install)")
 
     if install_type == "native" and not venv_python(install_dir):
         _warn("No .venv — running from system Python (can cause version mismatches)")
