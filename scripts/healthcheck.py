@@ -355,7 +355,17 @@ def run_checks(install_dir: Path, fix: bool) -> list[str]:
             issues.append(f"v2mod:{sub}")
 
     print()
-    print("[7] Install folder hygiene")
+    print("[7] v2 UI templates")
+    for tpl in ("shield.html", "agents.html", "system_health.html", "assistant.html"):
+        path = install_dir / "templates" / tpl
+        if path.exists():
+            _ok(f"templates/{tpl}")
+        else:
+            _warn(f"Missing templates/{tpl} (re-run upgrade to sync)")
+            issues.append(f"template:{tpl}")
+
+    print()
+    print("[8] Install folder hygiene")
     cleanup_script = install_dir / "scripts" / "rla_cleanup.py"
     if not cleanup_script.is_file():
         cleanup_script = Path(__file__).resolve().parent / "rla_cleanup.py"

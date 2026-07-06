@@ -177,6 +177,67 @@ async def register_agent(request: Request, user: str = Depends(_require_login)):
     return result
 
 
+def _agent_install_script(agent_id: str, token: str, platform: str, server_base: str) -> str:
+    base = server_base.rstrip("/")
+    if platform == "windows":
+        return (
+            f"# RocketLogAI Agent installer (Windows)\n"
+            f"# Run in PowerShell on the target machine:\n"
+            f"$env:RLA_SERVER = '{base}'\n"
+            f"$env:RLA_AGENT_ID = '{agent_id}'\n"
+            f"$env:RLA_AGENT_TOKEN = '{token}'\n"
+            f"Invoke-RestMethod -Uri \"$env:RLA_SERVER/api/v2/agents/heartbeat\" "
+            f"-Method POST -Headers @{{'X-Agent-ID'=$env:RLA_AGENT_ID;'Authorization'=\"Bearer $env:RLA_AGENT_TOKEN\"}}\n"
+            f"Write-Host 'Agent registered. Keep this token secret.'\n"
+        )
+    return (
+        f"#!/usr/bin/env bash\n"
+        f"# RocketLogAI Agent installer (Linux/macOS)\n"
+        f"set -euo pipefail\n"
+        f"export RLA_SERVER='{base}'\n"
+        f"export RLA_AGENT_ID='{agent_id}'\n"
+        f"export RLA_AGENT_TOKEN='{token}'\n"
+        f"curl -fsS -X POST \"$RLA_SERVER/api/v2/agents/heartbeat\" \\\n"
+        f"  -H \"X-Agent-ID: $RLA_AGENT_ID\" -H \"Authorization: Bearer $RLA_AGENT_TOKEN\"\n"
+        f"echo 'Agent registered. Keep this token secret.'\n"
+    )
+
+
+@router.get("/agents/{agent_id}/install.sh")
+async def agent_install_sh(agent_id: str, request: Request, user: str = Depends(_require_login)):
+    from fastapi.responses import PlainTextResponse
+    rt = _get_runtime()
+    agents = rt.agents.list_agents()
+    row = next((a for a in agents if a.get("id") == agent_id), None)
+    if not row:
+        raise HTTPException(404, "Agent not found")
+    token = f"rla_{agent_id}"
+    script = _agent_install_script(agent_id, token, row.get("platform", "linux"), str(request.base_url).rstrip("/"))
+    return PlainTextResponse(script, media_type="text/plain")
+
+
+@router.get("/agents/{agent_id}/install.ps1")
+async def agent_install_ps1(agent_id: str, request: Request, user: str = Depends(_require_login)):
+    from fastapi.responses import PlainTextResponse
+    rt = _get_runtime()
+    agents = rt.agents.list_agents()
+    row = next((a for a in agents if a.get("id") == agent_id), None)
+    if not row:
+        raise HTTPException(404, "Agent not found")
+    token = f"rla_{agent_id}"
+    script = _agent_install_script(agent_id, token, "windows", str(request.base_url).rstrip("/"))
+    return PlainTextResponse(script, media_type="text/plain")
+
+
+@router.post("/agents/heartbeat")
+async def agent_heartbeat(request: Request):
+    agent_id = request.headers.get("X-Agent-ID", "")
+    if not agent_id:
+        raise HTTPException(400, "X-Agent-ID required")
+    rt = _get_runtime()
+    return rt.agents.heartbeat(agent_id)
+
+
 @router.post("/mobile/pair")
 async def mobile_pair(req: MobilePairRequest):
     rt = _get_runtime()

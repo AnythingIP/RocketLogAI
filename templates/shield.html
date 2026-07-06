@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Shield &amp; WAF — RocketLogAI{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="mb-6">
+        <h1 class="text-3xl font-semibold tracking-tight">Shield &amp; WAF</h1>
+        <p class="text-zinc-400 mt-1 text-sm">v2 inline protection: WAF inspection, AV scanning hooks, parental controls. Enable in <a href="/config" class="text-emerald-400 underline">Config</a> under <code class="text-zinc-300">shield</code>.</p>
+    </div>
+
+    <div id="shield-status" class="section-card rounded-3xl p-6 mb-6 text-sm text-zinc-400">Loading shield status...</div>
+
+    <div class="section-card rounded-3xl p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Test WAF inspect</h2>
+        <textarea id="waf-body" rows="4" class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3 text-sm font-mono" placeholder='{"path":"/login","body":"username=admin"}'></textarea>
+        <button onclick="inspectWaf()" class="mt-3 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-sm">Inspect payload</button>
+        <pre id="waf-result" class="mt-4 bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs overflow-x-auto"></pre>
+    </div>
+
+    <div class="text-xs text-zinc-500">
+        Shield modes are configured in config.yaml. Native install and upgrade both include v2 shield modules — no separate installer.
+    </div>
+</div>
+<script>
+async function loadShield() {
+    const el = document.getElementById('shield-status');
+    try {
+        const res = await fetch('/api/v2/shield/status');
+        const data = await res.json();
+        el.innerHTML = `<div class="grid md:grid-cols-3 gap-4">
+            <div><div class="text-xs text-zinc-500">Enabled</div><div class="text-xl text-emerald-300">${data.config?.enabled ? 'Yes' : 'No'}</div></div>
+            <div><div class="text-xs text-zinc-500">Mode</div><div class="text-xl">${data.config?.mode || 'disabled'}</div></div>
+            <div><div class="text-xs text-zinc-500">WAF rules loaded</div><div class="text-xl">${data.waf?.rules_loaded ?? '—'}</div></div>
+        </div>
+        <pre class="mt-4 text-xs bg-zinc-950 border border-zinc-800 rounded-xl p-3 overflow-x-auto">${JSON.stringify(data, null, 2)}</pre>`;
+    } catch (e) {
+        el.textContent = 'Could not load shield status: ' + e.message;
+    }
+}
+
+async function inspectWaf() {
+    const body = document.getElementById('waf-body').value;
+    const out = document.getElementById('waf-result');
+    out.textContent = 'Inspecting...';
+    try {
+        const res = await fetch('/api/v2/shield/inspect', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ body: body, source_ip: '127.0.0.1' })
+        });
+        out.textContent = JSON.stringify(await res.json(), null, 2);
+    } catch (e) {
+        out.textContent = e.message;
+    }
+}
+
+loadShield();
+</script>
+{% endblock %}

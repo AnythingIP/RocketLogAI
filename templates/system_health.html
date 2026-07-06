@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}System Health — RocketLogAI{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="mb-6 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+            <h1 class="text-3xl font-semibold tracking-tight">System Health</h1>
+            <p class="text-zinc-400 mt-1 text-sm">Live checks: Python, LLM (LM Studio/Ollama), v2 modules, Shield/WAF, operator execution.</p>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="runDiagnostics()" class="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Run All Checks</button>
+            <button onclick="runOperatorTest()" class="px-4 py-2 rounded-2xl border border-zinc-700 text-sm">Test Ping Execute</button>
+        </div>
+    </div>
+
+    <div id="health-summary" class="section-card rounded-3xl p-5 mb-6 text-sm text-zinc-400">Click Run All Checks to diagnose this server.</div>
+    <div id="health-checks" class="space-y-2 text-sm"></div>
+
+    <div class="section-card rounded-3xl p-5 mt-8 text-xs text-zinc-500">
+        <div class="font-semibold text-zinc-300 mb-2">CLI equivalent (on the server)</div>
+        <pre class="bg-zinc-950 border border-zinc-800 rounded-xl p-3 overflow-x-auto">cd D:\logsentinel
+.\.venv\Scripts\python.exe scripts\healthcheck.py D:\logsentinel
+.\.venv\Scripts\python.exe scripts\healthcheck.py D:\logsentinel --fix</pre>
+    </div>
+</div>
+<script>
+async function runDiagnostics() {
+    const summary = document.getElementById('health-summary');
+    const list = document.getElementById('health-checks');
+    summary.textContent = 'Running diagnostics...';
+    list.innerHTML = '';
+    try {
+        const res = await fetch('/api/system/diagnostics');
+        const data = await res.json();
+        const s = data.summary || {};
+        summary.innerHTML = `<span class="text-emerald-400 font-semibold">${s.ok || 0} OK</span> · `
+            + `<span class="text-amber-400">${s.warn || 0} warnings</span> · `
+            + `<span class="text-red-400">${s.fail || 0} failures</span> · `
+            + (s.healthy ? '<span class="text-emerald-300">Healthy</span>' : '<span class="text-amber-300">Needs attention</span>');
+        (data.checks || []).forEach(c => {
+            const color = c.status === 'ok' ? 'text-emerald-400' : (c.status === 'warn' ? 'text-amber-400' : 'text-red-400');
+            const div = document.createElement('div');
+            div.className = 'section-card rounded-2xl p-4';
+            div.innerHTML = `<div class="flex justify-between gap-4"><span class="font-mono">${c.name}</span><span class="${color} uppercase text-xs">${c.status}</span></div>`
+                + `<div class="text-zinc-300 mt-1">${c.detail || ''}</div>`
+                + (c.hint ? `<div class="text-zinc-500 mt-1">${c.hint}</div>` : '');
+            list.appendChild(div);
+        });
+        if (window.rocketToast) window.rocketToast('Diagnostics complete', s.healthy ? 'success' : 'warn');
+    } catch (e) {
+        summary.textContent = 'Failed to run diagnostics: ' + e.message;
+        if (window.rocketToast) window.rocketToast('Diagnostics failed', 'error');
+    }
+}
+
+async function runOperatorTest() {
+    if (window.rocketToast) window.rocketToast('Running safe ping self-test...', 'info', 3000);
+    try {
+        const res = await fetch('/api/system/diagnostics/operator-test', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            if (window.rocketToast) window.rocketToast('Operator ping test passed', 'success');
+        } else {
+            if (window.rocketToast) window.rocketToast('Operator ping test failed', 'error');
+        }
+        runDiagnostics();
+    } catch (e) {
+        if (window.rocketToast) window.rocketToast('Operator test error: ' + e.message, 'error');
+    }
+}
+
+runDiagnostics();
+</script>
+{% endblock %}

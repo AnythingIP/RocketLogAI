@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Agents — RocketLogAI{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-semibold tracking-tight">Remote Agents</h1>
+            <p class="text-zinc-400 mt-1 text-sm">Register agents, copy install instructions, monitor heartbeat. Included in the main v2 install — no separate package.</p>
+        </div>
+        <button onclick="showRegister()" class="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Register agent</button>
+    </div>
+
+    <div id="register-panel" class="hidden section-card rounded-3xl p-6 mb-6">
+        <h2 class="font-semibold mb-3">New agent</h2>
+        <div class="grid md:grid-cols-3 gap-3">
+            <input id="agent-name" placeholder="Name (e.g. office-pc)" class="bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+            <select id="agent-platform" class="bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                <option value="windows">Windows</option>
+                <option value="linux">Linux</option>
+                <option value="macos">macOS</option>
+            </select>
+            <input id="agent-host" placeholder="Hostname or IP" class="bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <button onclick="registerAgent()" class="mt-3 px-4 py-2 rounded-2xl bg-emerald-600 text-sm">Create registration</button>
+        <pre id="register-result" class="mt-4 text-xs bg-zinc-950 border border-zinc-800 rounded-xl p-4 overflow-x-auto hidden"></pre>
+    </div>
+
+    <div id="agents-list" class="space-y-3 text-sm"></div>
+
+    <div class="section-card rounded-3xl p-6 mt-8 text-xs text-zinc-400">
+        <h2 class="text-sm font-semibold text-zinc-200 mb-2">Manual install (after register)</h2>
+        <p class="mb-2">Save the <strong>install_token</strong> from registration (shown once). Then on the target machine:</p>
+        <pre class="bg-zinc-950 border border-zinc-800 rounded-xl p-3 overflow-x-auto"># Linux/macOS — replace SERVER and paths from registration response
+curl -fsS SERVER/api/v2/agents/AGENT_ID/install.sh -o install-agent.sh
+chmod +x install-agent.sh
+# Edit script with your token, then run ./install-agent.sh
+
+# Windows PowerShell
+Invoke-WebRequest SERVER/api/v2/agents/AGENT_ID/install.ps1 -OutFile install-agent.ps1</pre>
+    </div>
+</div>
+<script>
+function showRegister() {
+    document.getElementById('register-panel').classList.remove('hidden');
+}
+
+async function loadAgents() {
+    const list = document.getElementById('agents-list');
+    list.innerHTML = '<div class="text-zinc-500">Loading...</div>';
+    try {
+        const res = await fetch('/api/v2/agents');
+        const data = await res.json();
+        const agents = data.agents || [];
+        if (!agents.length) {
+            list.innerHTML = '<div class="section-card rounded-2xl p-6 text-zinc-500">No agents registered yet.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        agents.forEach(a => {
+            const div = document.createElement('div');
+            div.className = 'section-card rounded-2xl p-4 flex flex-wrap justify-between gap-2';
+            div.innerHTML = `<div><div class="font-semibold">${a.name}</div><div class="text-xs text-zinc-500">${a.platform} · ${a.host || '—'} · ${a.status}</div><div class="text-[10px] font-mono text-zinc-600">${a.id}</div></div>`
+                + `<div class="flex gap-2 text-xs"><a class="text-emerald-400 underline" href="/api/v2/agents/${a.id}/install.sh" target="_blank">install.sh</a>`
+                + `<a class="text-emerald-400 underline" href="/api/v2/agents/${a.id}/install.ps1" target="_blank">install.ps1</a></div>`;
+            list.appendChild(div);
+        });
+    } catch (e) {
+        list.textContent = 'Error: ' + e.message;
+    }
+}
+
+async function registerAgent() {
+    const payload = {
+        name: document.getElementById('agent-name').value.trim() || 'agent',
+        platform: document.getElementById('agent-platform').value,
+        host: document.getElementById('agent-host').value.trim(),
+    };
+    const out = document.getElementById('register-result');
+    out.classList.remove('hidden');
+    out.textContent = 'Registering...';
+    try {
+        const res = await fetch('/api/v2/agents/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+        if (window.rocketToast) window.rocketToast('Agent registered — save the install_token now', 'success', 8000);
+        loadAgents();
+    } catch (e) {
+        out.textContent = e.message;
+    }
+}
+
+loadAgents();
+</script>
+{% endblock %}

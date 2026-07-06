@@ -56,6 +56,8 @@ from .ha import get_ha_client
 from .remediation import RemediationAction, RemediationEngine
 from .auth import hash_password, verify_password, needs_rehash
 from .ai_assistant.controller import get_ai_assistant_controller  # Phase 3 powerful natural language controller (Open Interpreter + safety)
+from .assistant_tasks import TASKS as ASSISTANT_TASKS
+from .diagnostics import run_live_checks as run_live_diagnostics
 from .mac_vendor import get_mac_vendor_lookup  # for reliable vendor name + smart icons on /devices
 
 try:
@@ -1557,8 +1559,9 @@ async def api_assistant_ask(request: Request, user: str = Depends(require_login)
         llm = get_llm_client(_cfg.llm) if _cfg and _cfg.llm else None
         if llm and _storage:
             controller = get_ai_assistant_controller(_storage, llm, _cfg)
-            powerful_response = await controller.process_natural_request(
-                question, user, conversation_history=history
+            powerful_response = await asyncio.wait_for(
+                controller.process_natural_request(question, user, conversation_history=history),
+                timeout=120,
             )
             if powerful_response.get("mode") == "action_plan":
                 plan = _normalize_operator_plan_response(powerful_response.get("plan") or {})
@@ -1570,6 +1573,8 @@ async def api_assistant_ask(request: Request, user: str = Depends(require_login)
                 }
             if powerful_response.get("mode") == "text" and not looks_like_operator:
                 return powerful_response
+    except asyncio.TimeoutError:
+        logger.warning("Phase 3 powerful controller timed out, falling back")
     except Exception as e:
         logger.warning(f"Phase 3 powerful controller failed, falling back: {e}")
 
@@ -1729,13 +1734,33 @@ async def api_create_credential(request: Request, user: str = Depends(require_lo
         return {"success": False, "error": str(e)[:200]}
 
 
+async def _execute_assistant_plan(plan: dict, user: str, confirmed: bool, user_notes: str | None = None) -> dict:
+    """Run operator plans without blocking the event loop on subprocess/LLM work."""
+    intent = (plan.get("intent") or "").lower()
+    simple_readonly = intent in ("ping", "traceroute", "nmap_basic", "list_devices")
+    use_legacy = bool(plan.get("is_operator_command")) or simple_readonly
+
+    if use_legacy:
+        return await _execute_operator_plan(plan, user, confirmed=confirmed)
+
+    if plan.get("_meta") or plan.get("proposed_steps"):
+        try:
+            from .llm import get_llm_client
+            llm = get_llm_client(_cfg.llm) if _cfg and _cfg.llm else None
+            if llm:
+                controller = get_ai_assistant_controller(_storage, llm, _cfg)
+                return await controller.confirm_and_execute(
+                    plan, user, confirmed=confirmed, user_notes=user_notes
+                )
+        except Exception as e:
+            logger.warning(f"Phase 3 controller confirm failed, falling back to legacy executor: {e}")
+
+    return await _execute_operator_plan(plan, user, confirmed=confirmed)
+
+
 @app.post("/api/assistant/confirm_execute")
 async def api_assistant_confirm_execute(request: Request, user: str = Depends(require_login), role: str = Depends(require_min_role("operator"))):
-    """
-    Phase 3 (primary) + Phase 2 safety gate.
-    The frontend sends the exact plan received from the controller + confirmed=true.
-    The powerful controller (with Open Interpreter) is preferred when available.
-    """
+    """Synchronous execution (kept for API clients). Prefer execute-async from the web UI."""
     if _storage is None:
         return {"success": False, "error": "not initialized"}
     try:
@@ -1746,21 +1771,99 @@ async def api_assistant_confirm_execute(request: Request, user: str = Depends(re
     plan = data.get("plan") or {}
     confirmed = bool(data.get("confirmed"))
     user_notes = data.get("user_notes")
+    return await _execute_assistant_plan(plan, user, confirmed=confirmed, user_notes=user_notes)
 
-    # Prefer Phase 3 powerful controller if the plan looks like it came from it
-    if plan.get("_meta") or "proposed_steps" in plan:
-        try:
-            from .llm import get_llm_client
-            llm = get_llm_client(_cfg.llm) if _cfg and _cfg.llm else None
-            if llm:
-                controller = get_ai_assistant_controller(_storage, llm, _cfg)
-                return await controller.confirm_and_execute(plan, user, confirmed=confirmed, user_notes=user_notes)
-        except Exception as e:
-            logger.warning(f"Phase 3 controller confirm failed, falling back to legacy executor: {e}")
 
-    # Legacy Phase 2 executor
-    result = await _execute_operator_plan(plan, user, confirmed=confirmed)
-    return result
+@app.post("/api/assistant/execute-async")
+async def api_assistant_execute_async(request: Request, user: str = Depends(require_login), role: str = Depends(require_min_role("operator"))):
+    """Queue assistant operator work in the background; poll /api/assistant/tasks/{id}."""
+    if _storage is None:
+        return {"success": False, "error": "not initialized"}
+    try:
+        data = await request.json()
+    except Exception:
+        return {"success": False, "error": "bad request"}
+
+    plan = data.get("plan") or {}
+    confirmed = bool(data.get("confirmed"))
+    user_notes = data.get("user_notes")
+    label = (plan.get("intent") or "operator") + " plan"
+
+    task_id = await ASSISTANT_TASKS.create(label=label, user=user)
+
+    async def _runner() -> dict:
+        return await _execute_assistant_plan(plan, user, confirmed=confirmed, user_notes=user_notes)
+
+    asyncio.create_task(ASSISTANT_TASKS.run(task_id, _runner))
+    return {"success": True, "task_id": task_id, "status": "queued"}
+
+
+@app.get("/api/assistant/tasks/{task_id}")
+async def api_assistant_task_status(task_id: str, user: str = Depends(require_login)):
+    task = await ASSISTANT_TASKS.get(task_id)
+    if not task:
+        return {"success": False, "error": "task not found"}
+    if task.get("user") != user:
+        return {"success": False, "error": "forbidden"}
+    return {"success": True, "task": task}
+
+
+@app.get("/api/system/diagnostics")
+async def api_system_diagnostics(user: str = Depends(require_login)):
+    llm = None
+    try:
+        from .llm import get_llm_client
+        llm = get_llm_client(_cfg.llm) if _cfg and _cfg.llm else None
+    except Exception:
+        pass
+    return run_live_diagnostics(cfg=_cfg, llm_client=llm, storage=_storage)
+
+
+@app.post("/api/system/diagnostics/operator-test")
+async def api_operator_self_test(user: str = Depends(require_login), role: str = Depends(require_min_role("operator"))):
+    """Safe read-only ping self-test from the RocketLogAI host."""
+    import platform as _platform
+
+    host = "127.0.0.1"
+    if _platform.system() == "Windows":
+        cmd = f"ping -n 1 {host}"
+    else:
+        cmd = f"ping -c 1 {host}"
+    plan = {
+        "is_operator_command": True,
+        "intent": "ping",
+        "proposed_steps": [{"description": "Self-test ping", "command": cmd, "risk": "low"}],
+        "requires_confirmation": False,
+    }
+    result = await _execute_operator_plan(plan, user, confirmed=True)
+    return {"success": bool(result.get("success")), "result": result}
+
+
+@app.get("/system-health", response_class=HTMLResponse)
+async def system_health_page(request: Request, user: str = Depends(require_login)):
+    return get_templates().TemplateResponse(
+        request,
+        "system_health.html",
+        context={"cfg": _cfg, "current_user": user},
+    )
+
+
+@app.get("/shield", response_class=HTMLResponse)
+async def shield_page(request: Request, user: str = Depends(require_login)):
+    return get_templates().TemplateResponse(
+        request,
+        "shield.html",
+        context={"cfg": _cfg, "current_user": user},
+    )
+
+
+@app.get("/agents", response_class=HTMLResponse)
+async def agents_page(request: Request, user: str = Depends(require_login)):
+    return get_templates().TemplateResponse(
+        request,
+        "agents.html",
+        context={"cfg": _cfg, "current_user": user},
+    )
 
 
 # =============================================================================
@@ -1939,14 +2042,26 @@ async def _execute_operator_plan(plan: dict, user: str, confirmed: bool = False)
 
             # Ping / traceroute / basic network (use system tools, cross-platform)
             if intent in ("ping", "traceroute") or "ping" in cmd.lower() or "traceroute" in cmd.lower():
-                # Already safe read-only commands
-                proc = subprocess.run(shlex.split(cmd) if " " in cmd else [cmd], capture_output=True, text=True, timeout=30)
+                # Already safe read-only commands (thread pool — do not block other HTTP requests)
+                proc = await asyncio.to_thread(
+                    subprocess.run,
+                    shlex.split(cmd) if " " in cmd else [cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
                 step_result["output"] = (proc.stdout or "") + (proc.stderr or "")
                 step_result["success"] = proc.returncode == 0
 
             elif intent == "nmap_basic" or "nmap" in cmd.lower():
                 if shutil.which("nmap"):
-                    proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=60)
+                    proc = await asyncio.to_thread(
+                        subprocess.run,
+                        shlex.split(cmd),
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
                     step_result["output"] = proc.stdout or proc.stderr or ""
                     step_result["success"] = proc.returncode == 0
                 else:
@@ -1988,7 +2103,14 @@ async def _execute_operator_plan(plan: dict, user: str, confirmed: bool = False)
                 # For safety we only allow a tiny allowlist for now
                 safe_local = any(x in cmd.lower() for x in ["ping", "traceroute", "uname", "date", "whoami", "ss -", "netstat"])
                 if safe_local:
-                    proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20)
+                    proc = await asyncio.to_thread(
+                        subprocess.run,
+                        cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=20,
+                    )
                     step_result["output"] = proc.stdout or proc.stderr or ""
                     step_result["success"] = proc.returncode == 0
                 else:
