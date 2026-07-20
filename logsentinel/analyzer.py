@@ -21,6 +21,7 @@ from .geo import get_geo_enricher
 from .ha import get_ha_client
 from .blacklist import get_blacklist
 from .mac_vendor import get_mac_vendor_lookup, refresh_mac_vendors_if_needed
+from .noise import should_skip_llm, filter_threats, is_likely_false_positive_threat
 
 # Optional alerting (graceful if web extras not installed)
 try:
@@ -40,6 +41,7 @@ class Analyzer:
         self.llm = llm or get_llm_client(cfg.llm)
         self.rule_engine = RuleEngine(cfg.rules.custom_patterns if cfg.rules.enabled else None)
         self._last_analysis_ts: float = 0.0
+        self._last_log_fingerprint: str | None = None
         self._running = False
 
     async def run_loop(self) -> None:
@@ -85,11 +87,36 @@ class Analyzer:
         if not recent:
             return {"status": "no_logs"}
 
+        # Avoid re-analyzing the exact same stale window forever when syslog is offline
+        # (e.g. after DB migration with no new inbound logs).
+        try:
+            newest_id = max(int(r.get("id") or 0) for r in recent)
+            oldest_id = min(int(r.get("id") or 0) for r in recent)
+            fingerprint = f"{newest_id}:{oldest_id}:{len(recent)}"
+        except Exception:
+            fingerprint = str(len(recent))
+        if fingerprint == self._last_log_fingerprint:
+            return {
+                "status": "skipped_unchanged",
+                "logs_evaluated": len(recent),
+                "threats_found": 0,
+                "summary": "No new logs since last analysis; skipped to avoid false-positive churn.",
+                "used_llm": False,
+            }
+
         # Run fast rule engine on everything
         scored: list[dict[str, Any]] = []
         high_value_logs: list[dict[str, Any]] = []
 
         for rec in recent:
+            # UniFi/Omada AP flow accounting + HA lab noise: never high-value for rules/LLM
+            if should_skip_llm(rec):
+                rec["_rule_score"] = 0.0
+                rec["_rule_matches"] = []
+                rec["_noise_skip"] = True
+                scored.append(rec)
+                continue
+
             score, matches = self.rule_engine.score_record(rec)
             rec["_rule_score"] = score
             rec["_rule_matches"] = [m.__dict__ for m in matches]
@@ -117,6 +144,8 @@ class Analyzer:
         # Explicitly drop logs that matched a low-severity *custom* noise rule (e.g. repetitive HA addon spam like UPS reconnects).
         # They stay in storage / /logs / AI assistant history, but we avoid feeding them to the LLM or treating as threats.
         def _is_low_noise(r):
+            if r.get("_noise_skip"):
+                return True
             return any(
                 m.get("rule_id") == "custom" and m.get("severity") == "low"
                 for m in r.get("_rule_matches", [])
@@ -125,6 +154,7 @@ class Analyzer:
         llm_candidates.sort(key=lambda x: (x["_rule_score"], x.get("severity_code", 0)), reverse=True)
 
         threats: list[dict[str, Any]] = []
+        dropped_fps: list[dict[str, Any]] = []
         summary = "No AI analysis performed."
         model_used = self.cfg.llm.model or "local"
         llm_succeeded = False
@@ -186,6 +216,20 @@ class Analyzer:
             if key not in seen:
                 seen.add(key)
                 unique_threats.append(t)
+
+        # Drop classic home-lab false positives (AP flow "SYN floods", LAN ICMP, HA MQTT noise, etc.)
+        unique_threats, dropped_fps = filter_threats(unique_threats)
+        if dropped_fps:
+            logger.info(
+                "Dropped %d false-positive threat(s) pre-persist: %s",
+                len(dropped_fps),
+                ", ".join(sorted({d.get("_fp_reason") or "?" for d in dropped_fps})),
+            )
+            if not unique_threats and summary and "No significant" not in summary:
+                summary = (
+                    f"Filtered {len(dropped_fps)} home-lab false positive(s) "
+                    f"(AP flow / LAN noise). Remaining risk low."
+                )
 
         # ============================================================
         # FULLY OFFLINE GEO + DEEP HOME ASSISTANT ENRICHMENT
@@ -353,11 +397,13 @@ class Analyzer:
         unique_threats = self._apply_custom_rules(unique_threats)
 
         # Persist analysis + threats (now with rich context + correct suppression status)
+        # Only count non-suppressed for threats_found / UI noise
+        persist_threats = [t for t in unique_threats if not t.get("_auto_suppress")]
         analysis_id = self.storage.create_analysis(model=model_used)
         self.storage.finish_analysis(
             analysis_id=analysis_id,
             summary=summary,
-            threats=unique_threats,
+            threats=unique_threats,  # suppressed ones stored as iot_expected if status set
             raw_response=raw_llm_text,
             logs_analyzed=len(recent),
         )
@@ -368,12 +414,14 @@ class Analyzer:
             send_threat_alerts(high_sev, self.cfg)
 
         self._last_analysis_ts = time.time()
+        self._last_log_fingerprint = fingerprint
 
         result_summary = {
             "status": "ok",
             "analysis_id": analysis_id,
             "logs_evaluated": len(recent),
-            "threats_found": len(unique_threats),
+            "threats_found": len(persist_threats),
+            "false_positives_dropped": len(dropped_fps),
             "summary": summary,
             "used_llm": llm_succeeded,
         }
@@ -433,6 +481,13 @@ class Analyzer:
             if enabled("suppress_9999") and "9999" in evidence and "192.168." in evidence:
                 auto_suppress = True
                 note = "Auto-suppressed: Expected internal service traffic on port 9999"
+
+            # Rule 3b: UniFi/Omada AP flow accounting mislabeled as attack
+            fp, fp_reason = is_likely_false_positive_threat(t)
+            if fp:
+                auto_suppress = True
+                note = f"Auto-suppressed false positive ({fp_reason})"
+                t["status"] = "verified_benign"
 
             # Rule 4: Unknown devices (no HA record) doing repeated external connections get promoted
             if enabled("escalate_unknown") and not ha_entity and source_ip and ("external" in desc or "443" in evidence):

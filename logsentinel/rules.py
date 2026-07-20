@@ -54,7 +54,12 @@ class RuleEngine:
             ("su_attempt", re.compile(r"su\[.*\]:.*(failed|authentication failure)", re.I), "medium", 5.5),
 
             # Common attack / exploit indicators
-            ("exploit_attempt", re.compile(r"(exploit|shellcode|payload|reverse shell|nc -e|/bin/sh -i)", re.I), "critical", 9.0),
+            # NOTE: do NOT match bare "payload" (HA logs "max. payload size") or generic "exploit" in product names.
+            ("exploit_attempt", re.compile(
+                r"(shellcode|reverse\s+shell|nc\s+-e|/bin/sh\s+-i|meterpreter|msfvenom|"
+                r"\bCVE-\d{4}-\d+\b|webshell|cmd\.exe\s+/c\s+powershell)",
+                re.I,
+            ), "critical", 9.0),
             ("base64_command", re.compile(r"echo [A-Za-z0-9+/=]{20,} \| base64 -d", re.I), "high", 8.0),
 
             # Malware / miner indicators (common in compromised hosts)

@@ -43,6 +43,21 @@ def _in_virtualenv() -> bool:
     return getattr(sys, "base_prefix", sys.prefix) != sys.prefix
 
 
+def _in_docker() -> bool:
+    """True when running inside a container (venv warning is noise there)."""
+    try:
+        if Path("/.dockerenv").exists():
+            return True
+        cgroup = Path("/proc/1/cgroup")
+        if cgroup.is_file():
+            text = cgroup.read_text(errors="ignore")
+            if "docker" in text or "containerd" in text or "kubepods" in text:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _pip_show_version(package: str) -> str | None:
     proc = subprocess.run(
         [sys.executable, "-m", "pip", "show", package],
@@ -63,6 +78,12 @@ def _ping_local() -> tuple[str, str, str]:
     if platform.system() == "Windows":
         cmd = ["ping", "-n", "1", "-w", "2000", host]
     else:
+        if not shutil.which("ping"):
+            return (
+                "warn",
+                "ping binary not installed in this environment",
+                "Docker: apt install iputils-ping (or rebuild image). Heartbeats need ping for host checks.",
+            )
         cmd = ["ping", "-c", "1", "-W", "2", host]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
     if proc.returncode == 0:
@@ -73,9 +94,19 @@ def _ping_local() -> tuple[str, str, str]:
 def _python_runtime_status() -> tuple[str, str, str]:
     ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     venv = _in_virtualenv()
-    detail = f"Python {ver} — {sys.executable}" + (" (.venv)" if venv else " (not in a venv)")
+    docker = _in_docker()
+    if docker:
+        env_note = " (Docker image)"
+    elif venv:
+        env_note = " (.venv)"
+    else:
+        env_note = " (not in a venv)"
+    detail = f"Python {ver} — {sys.executable}{env_note}"
     if sys.version_info < (3, 10):
-        return "fail", detail, "Use Python 3.12 in .venv."
+        return "fail", detail, "Use Python 3.12 in .venv (or official Docker image)."
+    # Container installs use system site-packages by design — do not warn about venv.
+    if docker:
+        return "ok", detail, ""
     if not venv:
         return "warn", detail, "Start with .\\start-rocketlogai.ps1 so the server uses .venv packages."
     return "ok", detail, ""

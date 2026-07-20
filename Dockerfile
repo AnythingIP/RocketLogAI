@@ -1,59 +1,39 @@
 # RocketLogAI v2.0 — Production Docker image
-# Docker image for easy deployment
-
 FROM python:3.12-slim
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
 RUN groupadd -r rocketlogai && useradd -r -g rocketlogai rocketlogai
 
 WORKDIR /app
 
-# Copy dependency files first (better layer caching)
+# Full source before install (hatch needs package present)
 COPY pyproject.toml ./
 COPY requirements.txt* ./
-
-# Install the package with web extras (FastAPI, uvicorn, etc.)
-# Note: bcrypt is included for secure local password storage.
-# requests is included for optional online geo IP fallback (Maps page enrichment).
-# cryptography for encrypted domain/Entra service secrets (Phase 4).
-# open-interpreter for the powerful conversational AI Assistant / Operator (Phase 3).
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir -e ".[web,v2]" && \
-    pip install --no-cache-dir open-interpreter cryptography || true
-
-# Copy the application code
 COPY logsentinel/ ./logsentinel/
 COPY templates/ ./templates/
 COPY example-config.yaml ./
 
-# Create data directory with proper permissions
+# Pin setuptools BEFORE open-interpreter: OI 0.4.x needs pkg_resources (gone in setuptools 82+)
+# Install web + v2 + ai extras for full System Health / Operator support
+RUN pip install --no-cache-dir -U pip wheel && \
+    pip install --no-cache-dir "setuptools>=65,<81" && \
+    pip install --no-cache-dir ".[web,v2,ai]" && \
+    pip install --no-cache-dir cryptography
+
 RUN mkdir -p /app/data && chown -R rocketlogai:rocketlogai /app
 
-# Switch to non-root user
 USER rocketlogai
 
-# Expose default ports
-# 8787 - Web UI (configurable)
-# 5140  - Syslog (UDP/TCP) - note: may require --privileged or port mapping for low ports
 EXPOSE 8787 5140/udp 5140/tcp
 
-# Healthcheck (simple)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8787/ || exit 1
+# Default is HTTPS-only on many lab installs; curl -k if TLS is on
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -fk https://localhost:8787/ || curl -f http://localhost:8787/ || exit 1
 
-# Default command: run with web UI
-# Users can override: docker run ... logsentinel run
-# Or for web only: logsentinel web
 ENTRYPOINT ["logsentinel"]
 CMD ["run", "--web"]
-
-# Recommended volumes:
-#   - ./data:/app/data
-#   - ./GeoLite2-City.mmdb:/app/GeoLite2-City.mmdb:ro   (for Maps)
-#   - ./config.yaml:/app/config.yaml:ro                 (optional)

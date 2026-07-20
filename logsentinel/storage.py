@@ -713,7 +713,7 @@ class Storage:
                     t.get("recommended_action"),
                     t.get("hostname"),
                     t.get("appname"),
-                    "open",
+                    t.get("status") or "open",
                     t.get("source_ip"),
                     t.get("geo_country"),
                     t.get("geo_city"),
