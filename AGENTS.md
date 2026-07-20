@@ -13,18 +13,20 @@ You are working on the **RocketLogAI product** (folder name: `RockeLogAI`).
 
 | Remote | URL |
 |--------|-----|
-| `origin` | https://github.com/AnythingIP/RocketLogAI.git (public GitHub) |
-| `forgejo` | http://192.168.20.92:3000/grok/RockeLogAI.git (lab) |
+| `origin` | https://github.com/AnythingIP/RocketLogAI.git (public GitHub) — **always push here** |
+| `forgejo` | Lab mirror — **URL may change**. Old host `192.168.20.92:3000` is **stale** (moved). Ask the user or check `git remote -v` / LinuxBox-Grok notes for the new URL. Do not fail a session if forgejo is unreachable; GitHub is source of truth for public product work. |
 
 ---
 
 ## Handoff status (2026-07-20) — read this first
 
-Work was done from a **LinuxBox-Grok** lab session and written **into this tree**. When the user opens this project (Ctrl-S), **the source files are already on disk** — they do **not** need to re-implement the FP fix. They **do** still need (when asked):
+Work was done from a **LinuxBox-Grok** lab session and written **into this tree**. FP + Docker System Health landed on disk, then **committed and pushed to GitHub** (`bf310b0`, issue [#1](https://github.com/AnythingIP/RocketLogAI/issues/1)).
 
-1. **Git commit + push** (changes were **not** committed to GitHub yet).
-2. Optional clean **Docker rebuild** on `.54` so image matches git (lab was **hot-patched** only).
-3. Optional GitHub issue/PR/release note about home-lab AP-flow false positives.
+Still optional when asked:
+
+1. Push to **forgejo** once the user provides the new lab URL (`git remote set-url forgejo …`).
+2. Clean **Docker rebuild** on `.54` so image matches git (lab was **hot-patched** only).
+3. Second-pass cleanup of remaining open “unusual HTTPS” threats.
 
 ### Files already changed / added in this workspace
 
